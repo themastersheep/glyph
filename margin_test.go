@@ -214,9 +214,9 @@ func TestMarginNestedContainers(t *testing.T) {
 
 func TestMarginVBoxNode(t *testing.T) {
 	// Test the struct-based API too
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Hello"},
-	}}.Margin(1))
+	tmpl := Build(VBox.Margin(1)(
+		Text("Hello"),
+	))
 
 	buf := NewBuffer(20, 5)
 	tmpl.Execute(buf, 20, 5)
@@ -230,9 +230,9 @@ func TestMarginVBoxNode(t *testing.T) {
 }
 
 func TestMarginHBoxNode(t *testing.T) {
-	tmpl := Build(HBoxNode{Children: []any{
-		TextNode{Content: "AB"},
-	}}.Margin(1))
+	tmpl := Build(HBox.Margin(1)(
+		Text("AB"),
+	))
 
 	buf := NewBuffer(20, 5)
 	tmpl.Execute(buf, 20, 5)

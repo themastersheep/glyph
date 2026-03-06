@@ -349,23 +349,6 @@ type Flex struct {
 	FlexGrow     float32 // share of remaining space (0 = none, 1 = equal share)
 }
 
-// TextNode displays text content.
-type TextNode struct {
-	Flex
-	Content any   // string or *string
-	Style   Style // styling (use Attr for bold, dim, etc.)
-}
-
-// LeaderNode displays "Label.....Value" with dots filling the space.
-// Supports pointer bindings for dynamic updates.
-type LeaderNode struct {
-	Label any   // string or *string
-	Value any   // string or *string
-	Width int16 // total width (0 = fill available from parent)
-	Fill  rune  // fill character (0 = '.')
-	Style Style // styling (use Attr for bold, dim, etc.)
-}
-
 // Align specifies text alignment within a cell.
 type Align uint8
 
@@ -393,64 +376,6 @@ type Table struct {
 	AltRowStyle Style         // style for alternating rows (if non-zero)
 }
 
-// SparklineNode displays a mini chart using Unicode block characters.
-// Values are normalized to fit within the available height (1 character).
-// Uses: ▁▂▃▄▅▆▇█
-type SparklineNode struct {
-	Values any     // []float64 or *[]float64
-	Width  int16   // width (0 = auto from data length)
-	Min    float64 // minimum value (0 = auto-detect)
-	Max    float64 // maximum value (0 = auto-detect)
-	Style  Style   // styling
-}
-
-// HRuleNode draws a horizontal line that fills available width.
-// Default character is '─' (box drawing light horizontal).
-type HRuleNode struct {
-	Char  rune  // line character (0 = '─')
-	Style Style // styling
-}
-
-// VRuleNode draws a vertical line that fills available height.
-// Default character is '│' (box drawing light vertical).
-type VRuleNode struct {
-	Char  rune  // line character (0 = '│')
-	Style Style // styling
-}
-
-// SpacerNode creates empty space with specified dimensions.
-// If no dimensions are set, Spacer grows to fill available space (implicit Grow(1)).
-// With explicit Width/Height, it becomes a fixed-size spacer.
-//
-// Examples:
-//   - Spacer{}              → fills available space (grows)
-//   - Spacer{Height: 1}     → fixed 1-line vertical gap
-//   - Spacer{Width: 10}     → fixed 10-char horizontal gap
-//   - Spacer{}.Grow(2)      → grows with weight 2
-//   - Spacer{Char: '.'}     → dotted leader (fills with dots)
-type SpacerNode struct {
-	flex
-	Width  int16 // fixed width (0 = grow to fill)
-	Height int16 // fixed height (0 = grow to fill, but defaults to 1 in VBox if not growing)
-	Char   rune  // fill character (0 = empty space)
-	Style  Style // style for fill character
-}
-
-// Grow sets flex grow factor for Spacer.
-func (s SpacerNode) Grow(g float32) SpacerNode { s.flexGrow = g; return s }
-
-// FG sets the foreground color for the fill character.
-func (s SpacerNode) FG(c Color) SpacerNode { s.Style.FG = c; return s }
-
-// SpinnerNode displays an animated loading indicator.
-// The Frame pointer controls which animation frame to show.
-// Increment Frame and re-render to animate.
-type SpinnerNode struct {
-	Frame  *int     // pointer to current frame index
-	Frames []string // custom frames (nil = default braille spinner)
-	Style  Style    // styling
-}
-
 // SpinnerBraille is the default spinner animation (braille dots).
 var SpinnerBraille = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
@@ -462,20 +387,6 @@ var SpinnerLine = []string{"-", "\\", "|", "/"}
 
 // SpinnerCircle is a circle spinner.
 var SpinnerCircle = []string{"◐", "◓", "◑", "◒"}
-
-// ScrollbarNode displays a visual scroll indicator.
-// Vertical by default; set Horizontal to true for horizontal scrollbar.
-type ScrollbarNode struct {
-	ContentSize int   // total content size
-	ViewSize    int   // visible viewport size
-	Position    *int  // pointer to current scroll position
-	Length      int16 // scrollbar length (0 = fill available)
-	Horizontal  bool  // true for horizontal scrollbar
-	TrackChar   rune  // track character (default: '│' or '─')
-	ThumbChar   rune  // thumb character (default: '█')
-	TrackStyle  Style // track styling
-	ThumbStyle  Style // thumb styling
-}
 
 // TabsStyle defines the visual style for tab headers.
 type TabsStyle uint8
@@ -530,64 +441,6 @@ type Custom struct {
 	Render func(buf *Buffer, x, y, w, h int16)
 }
 
-// JumpNode wraps a component to make it a jump target.
-// When jump mode is active, a label is displayed at this component's position.
-// When the user types the label, OnSelect is called.
-type JumpNode struct {
-	Child    any    // The wrapped component
-	OnSelect func() // Called when this target is selected
-	Style    Style  // Optional: per-target label style override
-}
-
-// ProgressNode displays a progress bar.
-type ProgressNode struct {
-	Flex
-	Value    any   // *int (0-100)
-	BarWidth int16 // width of the bar in characters (distinct from Flex.Width layout width)
-}
-
-// LayerViewNode displays a scrollable layer.
-// The Layer is pre-rendered content that gets blitted to screen.
-type LayerViewNode struct {
-	Flex
-	Layer      *Layer // the pre-rendered layer
-	ViewHeight int16  // viewport height (0 = fill available, distinct from Flex.Height)
-	ViewWidth  int16  // viewport width (0 = fill available, distinct from Flex.Width)
-}
-
-// Grow sets the flex grow factor for this layer.
-func (l LayerViewNode) Grow(factor float32) LayerViewNode { l.FlexGrow = factor; return l }
-
-// HBoxNode arranges children horizontally.
-type HBoxNode struct {
-	flex
-	Children     []any
-	Title        string // title for bordered containers
-	Gap          int8
-	CascadeStyle *Style // style inherited by children (pointer for dynamic themes)
-
-	// Set via chainable methods
-	border   BorderStyle
-	borderFG *Color
-	borderBG *Color
-	margin   [4]int16 // top, right, bottom, left
-}
-
-// VBoxNode arranges children vertically.
-type VBoxNode struct {
-	flex
-	Children     []any
-	Title        string // title for bordered containers
-	Gap          int8
-	CascadeStyle *Style // style inherited by children (pointer for dynamic themes)
-
-	// Set via chainable methods
-	border   BorderStyle
-	borderFG *Color
-	borderBG *Color
-	margin   [4]int16 // top, right, bottom, left
-}
-
 // flex contains internal layout properties (use chainable methods to set).
 type flex struct {
 	percentWidth float32
@@ -595,110 +448,6 @@ type flex struct {
 	height       int16
 	flexGrow     float32
 	fitContent   bool
-}
-
-// Chainable layout methods for HBox
-
-// WidthPct sets width as percentage of parent (0.5 = 50%).
-func (r HBoxNode) WidthPct(pct float32) HBoxNode { r.percentWidth = pct; return r }
-
-// Width sets explicit width in characters.
-func (r HBoxNode) Width(w int16) HBoxNode { r.width = w; return r }
-
-// Height sets explicit height in lines.
-func (r HBoxNode) Height(h int16) HBoxNode { r.height = h; return r }
-
-// Grow sets flex grow factor.
-func (r HBoxNode) Grow(g float32) HBoxNode { r.flexGrow = g; return r }
-
-// Border sets the border style.
-func (r HBoxNode) Border(b BorderStyle) HBoxNode { r.border = b; return r }
-
-// BorderFG sets the border foreground color.
-func (r HBoxNode) BorderFG(c Color) HBoxNode { r.borderFG = &c; return r }
-
-// BorderBG sets the border background color.
-func (r HBoxNode) BorderBG(c Color) HBoxNode { r.borderBG = &c; return r }
-
-// Margin sets uniform margin on all sides.
-func (r HBoxNode) Margin(all int16) HBoxNode {
-	r.margin = [4]int16{all, all, all, all}
-	return r
-}
-
-// MarginVH sets vertical and horizontal margin.
-func (r HBoxNode) MarginVH(vertical, horizontal int16) HBoxNode {
-	r.margin = [4]int16{vertical, horizontal, vertical, horizontal}
-	return r
-}
-
-// MarginTRBL sets individual margins for each side.
-func (r HBoxNode) MarginTRBL(top, right, bottom, left int16) HBoxNode {
-	r.margin = [4]int16{top, right, bottom, left}
-	return r
-}
-
-// Chainable layout methods for VBox
-
-// WidthPct sets width as percentage of parent (0.5 = 50%).
-func (c VBoxNode) WidthPct(pct float32) VBoxNode { c.percentWidth = pct; return c }
-
-// Width sets explicit width in characters.
-func (c VBoxNode) Width(w int16) VBoxNode { c.width = w; return c }
-
-// Height sets explicit height in lines.
-func (c VBoxNode) Height(h int16) VBoxNode { c.height = h; return c }
-
-// Grow sets flex grow factor.
-func (c VBoxNode) Grow(g float32) VBoxNode { c.flexGrow = g; return c }
-
-// Border sets the border style.
-func (c VBoxNode) Border(b BorderStyle) VBoxNode { c.border = b; return c }
-
-// BorderFG sets the border foreground color.
-func (c VBoxNode) BorderFG(fg Color) VBoxNode { c.borderFG = &fg; return c }
-
-// BorderBG sets the border background color.
-func (c VBoxNode) BorderBG(bg Color) VBoxNode { c.borderBG = &bg; return c }
-
-// Margin sets uniform margin on all sides.
-func (c VBoxNode) Margin(all int16) VBoxNode {
-	c.margin = [4]int16{all, all, all, all}
-	return c
-}
-
-// MarginVH sets vertical and horizontal margin.
-func (c VBoxNode) MarginVH(vertical, horizontal int16) VBoxNode {
-	c.margin = [4]int16{vertical, horizontal, vertical, horizontal}
-	return c
-}
-
-// MarginTRBL sets individual margins for each side.
-func (c VBoxNode) MarginTRBL(top, right, bottom, left int16) VBoxNode {
-	c.margin = [4]int16{top, right, bottom, left}
-	return c
-}
-
-// IfNode conditionally renders content.
-type IfNode struct {
-	Cond any // *bool
-	Then any
-}
-
-// ElseNode renders when preceding If was false.
-type ElseNode struct {
-	Then any
-}
-
-// Else creates an else branch.
-func Else(then any) ElseNode {
-	return ElseNode{Then: then}
-}
-
-// ForEachNode iterates over a slice.
-type ForEachNode struct {
-	Items  any // *[]T
-	Render any // func(*T) any
 }
 
 // SelectionList displays a list of items with selection marker.

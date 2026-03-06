@@ -484,54 +484,24 @@ func (t *Template) compile(node any, parent int16, depth int, elemBase unsafe.Po
 	}
 
 	switch v := node.(type) {
-	case TextNode:
-		return t.compileText(v, parent, depth, elemBase, elemSize)
-	case ProgressNode:
-		return t.compileProgress(v, parent, depth, elemBase, elemSize)
-	case HBoxNode:
-		return t.compileContainer(v.Children, v.Gap, true, v.flex, v.border, v.Title, v.borderFG, v.borderBG, Color{}, v.CascadeStyle, v.margin, parent, depth, elemBase, elemSize)
-	case VBoxNode:
-		return t.compileContainer(v.Children, v.Gap, false, v.flex, v.border, v.Title, v.borderFG, v.borderBG, Color{}, v.CascadeStyle, v.margin, parent, depth, elemBase, elemSize)
-	case IfNode:
-		return t.compileIf(v, parent, depth, elemBase, elemSize)
-	case ForEachNode:
-		return t.compileForEach(v, parent, depth)
 	case Renderer:
 		return t.compileRenderer(v, parent, depth)
 	case Box:
 		return t.compileBox(v, parent, depth, elemBase, elemSize)
 	case conditionNode:
 		return t.compileCondition(v, parent, depth, elemBase, elemSize)
-	case LayerViewNode:
-		return t.compileLayer(v, parent, depth)
 	case RichTextNode:
 		return t.compileRichText(v, parent, depth, elemBase, elemSize)
 	case SelectionList:
 		return t.compileSelectionList(&v, parent, depth, elemBase, elemSize)
 	case *SelectionList:
 		return t.compileSelectionList(v, parent, depth, elemBase, elemSize)
-	case LeaderNode:
-		return t.compileLeader(v, parent, depth)
 	case Table:
 		return t.compileTable(v, parent, depth)
-	case SparklineNode:
-		return t.compileSparkline(v, parent, depth)
-	case HRuleNode:
-		return t.compileHRule(v, parent, depth)
-	case VRuleNode:
-		return t.compileVRule(v, parent, depth)
-	case SpacerNode:
-		return t.compileSpacer(v, parent, depth)
-	case SpinnerNode:
-		return t.compileSpinner(v, parent, depth)
-	case ScrollbarNode:
-		return t.compileScrollbar(v, parent, depth)
 	case TabsNode:
 		return t.compileTabs(v, parent, depth)
 	case TreeView:
 		return t.compileTreeView(v, parent, depth)
-	case JumpNode:
-		return t.compileJump(v, parent, depth, elemBase, elemSize)
 	case TextInput:
 		return t.compileTextInput(v, parent, depth)
 	case OverlayNode:
@@ -542,7 +512,6 @@ func (t *Template) compile(node any, parent int16, depth int, elemBase unsafe.Po
 	case Component:
 		return t.compile(v.Build(), parent, depth, elemBase, elemSize)
 
-	// New functional API types
 	case VBoxC:
 		return t.compileVBoxC(v, parent, depth, elemBase, elemSize)
 	case HBoxC:
@@ -705,17 +674,6 @@ func (t *Template) compileBox(box Box, parent int16, depth int, elemBase unsafe.
 	return idx
 }
 
-func (t *Template) compileLayer(v LayerViewNode, parent int16, depth int) int16 {
-	return t.addOp(Op{
-		Kind:        OpLayer,
-		Parent:      parent,
-		LayerPtr:    v.Layer,
-		LayerWidth:  v.ViewWidth,
-		LayerHeight: v.ViewHeight,
-		FlexGrow:    v.FlexGrow, // Allow layers to participate in flex
-	}, depth)
-}
-
 func (t *Template) compileRichText(v RichTextNode, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
 	op := Op{
 		Parent: parent,
@@ -866,38 +824,6 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 	return t.addOp(op, depth)
 }
 
-func (t *Template) compileLeader(v LeaderNode, parent int16, depth int) int16 {
-	op := Op{
-		Parent:      parent,
-		LeaderFill:  v.Fill,
-		LeaderStyle: v.Style,
-		Width:       v.Width,
-	}
-
-	// Get label (always static for now)
-	switch label := v.Label.(type) {
-	case string:
-		op.LeaderLabel = label
-	case *string:
-		op.LeaderLabel = *label // dereference at compile time for simplicity
-	}
-
-	// Get value (static or pointer)
-	switch val := v.Value.(type) {
-	case string:
-		op.Kind = OpLeader
-		op.LeaderValue = val
-	case *string:
-		op.Kind = OpLeaderPtr
-		op.LeaderValuePtr = val
-	default:
-		op.Kind = OpLeader
-		op.LeaderValue = ""
-	}
-
-	return t.addOp(op, depth)
-}
-
 func (t *Template) compileTable(v Table, parent int16, depth int) int16 {
 	// Extract rows pointer
 	var rowsPtr *[][]string
@@ -921,117 +847,6 @@ func (t *Template) compileTable(v Table, parent int16, depth int) int16 {
 	}
 
 	return t.addOp(op, depth)
-}
-
-func (t *Template) compileSparkline(v SparklineNode, parent int16, depth int) int16 {
-	op := Op{
-		Parent:     parent,
-		Width:      v.Width,
-		SparkMin:   v.Min,
-		SparkMax:   v.Max,
-		SparkStyle: v.Style,
-	}
-
-	switch vals := v.Values.(type) {
-	case []float64:
-		op.Kind = OpSparkline
-		op.SparkValues = vals
-	case *[]float64:
-		op.Kind = OpSparklinePtr
-		op.SparkValuesPtr = vals
-	}
-
-	return t.addOp(op, depth)
-}
-
-func (t *Template) compileHRule(v HRuleNode, parent int16, depth int) int16 {
-	char := v.Char
-	if char == 0 {
-		char = '─'
-	}
-	return t.addOp(Op{
-		Kind:      OpHRule,
-		Parent:    parent,
-		RuleChar:  char,
-		RuleStyle: v.Style,
-	}, depth)
-}
-
-func (t *Template) compileVRule(v VRuleNode, parent int16, depth int) int16 {
-	char := v.Char
-	if char == 0 {
-		char = '│'
-	}
-	return t.addOp(Op{
-		Kind:      OpVRule,
-		Parent:    parent,
-		RuleChar:  char,
-		RuleStyle: v.Style,
-	}, depth)
-}
-
-func (t *Template) compileSpacer(v SpacerNode, parent int16, depth int) int16 {
-	// Determine grow value:
-	// - Explicit Grow() takes precedence
-	// - If no dimensions set (Width=0, Height=0), default to grow=1
-	// - Otherwise fixed spacer, no grow
-	grow := v.flexGrow
-	if grow == 0 && v.Width == 0 && v.Height == 0 {
-		grow = 1 // implicit grow when no dimensions specified
-	}
-
-	return t.addOp(Op{
-		Kind:      OpSpacer,
-		Parent:    parent,
-		Width:     v.Width,
-		Height:    v.Height,
-		FlexGrow:  grow,
-		RuleChar:  v.Char,  // reuse RuleChar for fill character
-		RuleStyle: v.Style, // reuse RuleStyle for fill style
-	}, depth)
-}
-
-func (t *Template) compileSpinner(v SpinnerNode, parent int16, depth int) int16 {
-	frames := v.Frames
-	if frames == nil {
-		frames = SpinnerBraille
-	}
-	return t.addOp(Op{
-		Kind:            OpSpinner,
-		Parent:          parent,
-		SpinnerFramePtr: v.Frame,
-		SpinnerFrames:   frames,
-		SpinnerStyle:    v.Style,
-	}, depth)
-}
-
-func (t *Template) compileScrollbar(v ScrollbarNode, parent int16, depth int) int16 {
-	trackChar := v.TrackChar
-	thumbChar := v.ThumbChar
-	if trackChar == 0 {
-		if v.Horizontal {
-			trackChar = '─'
-		} else {
-			trackChar = '│'
-		}
-	}
-	if thumbChar == 0 {
-		thumbChar = '█'
-	}
-	return t.addOp(Op{
-		Kind:              OpScrollbar,
-		Parent:            parent,
-		Width:             v.Length, // for horizontal
-		Height:            v.Length, // for vertical
-		ScrollContentSize: v.ContentSize,
-		ScrollViewSize:    v.ViewSize,
-		ScrollPosPtr:      v.Position,
-		ScrollHorizontal:  v.Horizontal,
-		ScrollTrackChar:   trackChar,
-		ScrollThumbChar:   thumbChar,
-		ScrollTrackStyle:  v.TrackStyle,
-		ScrollThumbStyle:  v.ThumbStyle,
-	}, depth)
 }
 
 func (t *Template) compileTabs(v TabsNode, parent int16, depth int) int16 {
@@ -1080,27 +895,6 @@ func (t *Template) compileTreeView(v TreeView, parent int16, depth int) int16 {
 		TreeLeafChar:      leafChar,
 		TreeStyle:         v.Style,
 	}, depth)
-}
-
-func (t *Template) compileJump(v JumpNode, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
-	// Jump is a simple wrapper - add the op, then compile child as our child
-	idx := t.addOp(Op{
-		Kind:         OpJump,
-		Parent:       parent,
-		JumpOnSelect: v.OnSelect,
-		JumpStyle:    v.Style,
-		ChildStart:   int16(len(t.ops)), // Will be set after child compiled
-	}, depth)
-
-	// Compile the child inline
-	if v.Child != nil {
-		t.compile(v.Child, idx, depth+1, elemBase, elemSize)
-	}
-
-	// Set child end
-	t.ops[idx].ChildEnd = int16(len(t.ops))
-
-	return idx
 }
 
 func (t *Template) compileTextInput(v TextInput, parent int16, depth int) int16 {
@@ -1166,60 +960,6 @@ func (t *Template) compileOverlay(v OverlayNode, parent int16, depth int) int16 
 	return t.addOp(op, depth)
 }
 
-func (t *Template) compileText(v TextNode, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
-	op := Op{
-		Parent:    parent,
-		TextStyle: v.Style,
-	}
-
-	switch val := v.Content.(type) {
-	case string:
-		op.Kind = OpText
-		op.StaticStr = val
-	case *string:
-		if elemBase != nil && isWithinRange(unsafe.Pointer(val), elemBase, elemSize) {
-			op.Kind = OpTextOff
-			op.StrOff = uintptr(unsafe.Pointer(val)) - uintptr(elemBase)
-		} else {
-			op.Kind = OpTextPtr
-			op.StrPtr = val
-		}
-	case func() string:
-		op.Kind = OpTextFn
-		op.StrFn = val
-	}
-
-	return t.addOp(op, depth)
-}
-
-func (t *Template) compileProgress(v ProgressNode, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
-	width := v.BarWidth
-	if width == 0 {
-		width = 20
-	}
-
-	op := Op{
-		Parent: parent,
-		Width:  width,
-	}
-
-	switch val := v.Value.(type) {
-	case int:
-		op.Kind = OpProgress
-		op.StaticInt = val
-	case *int:
-		if elemBase != nil && isWithinRange(unsafe.Pointer(val), elemBase, elemSize) {
-			op.Kind = OpProgressOff
-			op.IntOff = uintptr(unsafe.Pointer(val)) - uintptr(elemBase)
-		} else {
-			op.Kind = OpProgressPtr
-			op.IntPtr = val
-		}
-	}
-
-	return t.addOp(op, depth)
-}
-
 func (t *Template) compileContainer(children []any, gap int8, isRow bool, f flex, border BorderStyle, title string, borderFG, borderBG *Color, fill Color, inheritStyle *Style, margin [4]int16, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
 	op := Op{
 		Kind:         OpContainer,
@@ -1267,40 +1007,6 @@ func (t *Template) compileContainer(children []any, gap int8, isRow bool, f flex
 	}
 
 	return idx
-}
-
-func (t *Template) compileIf(v IfNode, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
-	op := Op{
-		Kind:   OpIf,
-		Parent: parent,
-	}
-
-	// Compile condition pointer
-	switch val := v.Cond.(type) {
-	case *bool:
-		op.CondPtr = val
-	}
-
-	// Compile then branch as sub-template
-	if v.Then != nil {
-		thenTmpl := &Template{
-			ops:     make([]Op, 0, 16),
-			byDepth: make([][]int16, 8),
-		}
-		for i := range thenTmpl.byDepth {
-			thenTmpl.byDepth[i] = make([]int16, 0, 4)
-		}
-		thenTmpl.compile(v.Then, -1, 0, elemBase, elemSize)
-		if thenTmpl.maxDepth >= 0 {
-			thenTmpl.byDepth = thenTmpl.byDepth[:thenTmpl.maxDepth+1]
-		}
-		thenTmpl.geom = make([]Geom, len(thenTmpl.ops))
-		op.ThenTmpl = thenTmpl
-		// bubble up declarative bindings from sub-template
-		t.pendingBindings = append(t.pendingBindings, thenTmpl.pendingBindings...)
-	}
-
-	return t.addOp(op, depth)
 }
 
 func (t *Template) compileCondition(cond conditionNode, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
@@ -1418,9 +1124,9 @@ func (t *Template) compileSwitch(sw switchNodeInterface, parent int16, depth int
 	return t.addOp(op, depth)
 }
 
-func (t *Template) compileForEach(v ForEachNode, parent int16, depth int) int16 {
+func (t *Template) compileForEach(items any, render any, parent int16, depth int) int16 {
 	// Analyze slice
-	sliceRV := reflect.ValueOf(v.Items)
+	sliceRV := reflect.ValueOf(items)
 	if sliceRV.Kind() != reflect.Ptr {
 		panic("ForEach Items must be pointer to slice")
 	}
@@ -1433,7 +1139,7 @@ func (t *Template) compileForEach(v ForEachNode, parent int16, depth int) int16 
 	slicePtr := unsafe.Pointer(sliceRV.Pointer())
 
 	// Create dummy element for template compilation
-	renderRV := reflect.ValueOf(v.Render)
+	renderRV := reflect.ValueOf(render)
 	takesPtr := renderRV.Type().In(0).Kind() == reflect.Ptr
 
 	var dummyElem reflect.Value
@@ -1772,7 +1478,7 @@ func (t *Template) compileOverlayC(v OverlayC, parent int16, depth int) int16 {
 		childTmpl = Build(v.children[0])
 	} else if len(v.children) > 1 {
 		// multiple children - wrap in VBox
-		childTmpl = Build(VBoxNode{Children: v.children})
+		childTmpl = Build(VBox(v.children...))
 	}
 
 	// Default to centered if no explicit position

@@ -18,11 +18,11 @@ func TestLayerBlit(t *testing.T) {
 		screen := NewBuffer(20, 10)
 
 		// Build view with layer at position
-		view := VBoxNode{Children: []any{
-			TextNode{Content: "Header"},
-			LayerViewNode{Layer: layer, ViewHeight: 3},
-			TextNode{Content: "Footer"},
-		}}
+		view := VBox(
+			Text("Header"),
+			LayerView(layer).ViewHeight(3),
+			Text("Footer"),
+		)
 
 		tmpl := Build(view)
 		tmpl.Execute(screen, 20, 10)
@@ -76,15 +76,15 @@ func TestLayerBlit(t *testing.T) {
 
 		screen := NewBuffer(20, 15)
 
-		view := VBoxNode{Children: []any{
-			TextNode{Content: "=TOP="},
-			LayerViewNode{Layer: layer1, ViewHeight: 2},
-			TextNode{Content: "=MID1="},
-			LayerViewNode{Layer: layer2, ViewHeight: 2},
-			TextNode{Content: "=MID2="},
-			LayerViewNode{Layer: layer3, ViewHeight: 2},
-			TextNode{Content: "=BOT="},
-		}}
+		view := VBox(
+			Text("=TOP="),
+			LayerView(layer1).ViewHeight(2),
+			Text("=MID1="),
+			LayerView(layer2).ViewHeight(2),
+			Text("=MID2="),
+			LayerView(layer3).ViewHeight(2),
+			Text("=BOT="),
+		)
 
 		tmpl := Build(view)
 		tmpl.Execute(screen, 20, 15)
@@ -130,11 +130,11 @@ func TestLayerBlit(t *testing.T) {
 
 		screen := NewBuffer(20, 10)
 
-		view := VBoxNode{Children: []any{
-			LayerViewNode{Layer: layer1, ViewHeight: 3},
-			TextNode{Content: "---"},
-			LayerViewNode{Layer: layer2, ViewHeight: 3},
-		}}
+		view := VBox(
+			LayerView(layer1).ViewHeight(3),
+			Text("---"),
+			LayerView(layer2).ViewHeight(3),
+		)
 
 		tmpl := Build(view)
 
@@ -186,11 +186,11 @@ func TestLayerBlit(t *testing.T) {
 
 		screen := NewBuffer(20, 5)
 
-		view := VBoxNode{Children: []any{
-			TextNode{Content: "Before"},
-			LayerViewNode{Layer: layer, ViewHeight: 2},
-			TextNode{Content: "After"},
-		}}
+		view := VBox(
+			Text("Before"),
+			LayerView(layer).ViewHeight(2),
+			Text("After"),
+		)
 
 		tmpl := Build(view)
 		screen.Clear()
@@ -217,14 +217,11 @@ func TestLayerBlit(t *testing.T) {
 
 		screen := NewBuffer(40, 10)
 
-		view := VBoxNode{Children: []any{
-			VBoxNode{
-				Title: "Content",
-				Children: []any{
-					LayerViewNode{Layer: layer, ViewHeight: 3},
-				},
-			}.Border(BorderSingle),
-		}}
+		view := VBox(
+			VBox.Border(BorderSingle).Title("Content")(
+				LayerView(layer).ViewHeight(3),
+			),
+		)
 
 		tmpl := Build(view)
 		tmpl.Execute(screen, 40, 10)
@@ -327,9 +324,7 @@ func BenchmarkLayerWithCursor(b *testing.B) {
 
 	screen := NewBuffer(80, 24)
 
-	view := VBoxNode{Children: []any{
-		LayerViewNode{Layer: layer, ViewHeight: 24},
-	}}
+	view := VBox(LayerView(layer).ViewHeight(24))
 	tmpl := Build(view)
 
 	b.ReportAllocs()
@@ -356,9 +351,7 @@ func BenchmarkLayerScrollingWithCursor(b *testing.B) {
 
 	screen := NewBuffer(80, 24)
 
-	view := VBoxNode{Children: []any{
-		LayerViewNode{Layer: layer, ViewHeight: 24},
-	}}
+	view := VBox(LayerView(layer).ViewHeight(24))
 	tmpl := Build(view)
 
 	b.ReportAllocs()

@@ -44,17 +44,15 @@ func init() {
 func BenchmarkStress100Items(b *testing.B) {
 	buf := NewBuffer(80, 120)
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: &stressData.Title},
-			ForEach(&stressData.Items, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 30},
-				}}
-			}),
-		},
-	}
+	ui := VBox(
+		Text(&stressData.Title),
+		ForEach(&stressData.Items, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(30),
+			)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -82,17 +80,15 @@ func BenchmarkStressWideProgress(b *testing.B) {
 		}
 	}
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: "Wide Progress Bars"},
-			ForEach(&items, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 100},
-				}}
-			}),
-		},
-	}
+	ui := VBox(
+		Text("Wide Progress Bars"),
+		ForEach(&items, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(100),
+			)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -123,18 +119,16 @@ func BenchmarkStressDenseGrid(b *testing.B) {
 		}
 	}
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: "Dense Grid"},
-			ForEach(&rows, func(row *[]StressItem) any {
-				return HBoxNode{Children: []any{
-					ForEach(row, func(item *StressItem) any {
-						return ProgressNode{Value: &item.CPU, BarWidth: 8}
-					}),
-				}}
-			}),
-		},
-	}
+	ui := VBox(
+		Text("Dense Grid"),
+		ForEach(&rows, func(row *[]StressItem) any {
+			return HBox(
+				ForEach(row, func(item *StressItem) any {
+					return Progress(&item.CPU).Width(8)
+				}),
+			)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -159,35 +153,33 @@ func BenchmarkStressHeavyDashboard(b *testing.B) {
 	memBanks := stressData.Items[8:16]
 	procList := stressData.Items[16:50]
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: &stressData.Title},
-			TextNode{Content: "═══════════════════════════════════════════════════════════════"},
-			TextNode{Content: "CPU Cores"},
-			ForEach(&cpuCores, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 50},
-				}}
-			}),
-			TextNode{Content: ""},
-			TextNode{Content: "Memory Banks"},
-			ForEach(&memBanks, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 50},
-				}}
-			}),
-			TextNode{Content: ""},
-			TextNode{Content: "Process List"},
-			ForEach(&procList, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 40},
-				}}
-			}),
-		},
-	}
+	ui := VBox(
+		Text(&stressData.Title),
+		Text("═══════════════════════════════════════════════════════════════"),
+		Text("CPU Cores"),
+		ForEach(&cpuCores, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(50),
+			)
+		}),
+		Text(""),
+		Text("Memory Banks"),
+		ForEach(&memBanks, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(50),
+			)
+		}),
+		Text(""),
+		Text("Process List"),
+		ForEach(&procList, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(40),
+			)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -212,14 +204,12 @@ func BenchmarkStressTextHeavy(b *testing.B) {
 		lines[i] = "This is line number " + string(rune('0'+i/10)) + string(rune('0'+i%10)) + " with some extra text to make it longer and stress the text rendering path"
 	}
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: "Text Heavy Benchmark"},
-			ForEach(&lines, func(line *string) any {
-				return TextNode{Content: line}
-			}),
-		},
-	}
+	ui := VBox(
+		Text("Text Heavy Benchmark"),
+		ForEach(&lines, func(line *string) any {
+			return Text(line)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -246,35 +236,33 @@ func BenchmarkAsyncClearHeavy(b *testing.B) {
 	memBanks := stressData.Items[8:16]
 	procList := stressData.Items[16:50]
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: &stressData.Title},
-			TextNode{Content: "═══════════════════════════════════════════════════════════════"},
-			TextNode{Content: "CPU Cores"},
-			ForEach(&cpuCores, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 50},
-				}}
-			}),
-			TextNode{Content: ""},
-			TextNode{Content: "Memory Banks"},
-			ForEach(&memBanks, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 50},
-				}}
-			}),
-			TextNode{Content: ""},
-			TextNode{Content: "Process List"},
-			ForEach(&procList, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 40},
-				}}
-			}),
-		},
-	}
+	ui := VBox(
+		Text(&stressData.Title),
+		Text("═══════════════════════════════════════════════════════════════"),
+		Text("CPU Cores"),
+		ForEach(&cpuCores, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(50),
+			)
+		}),
+		Text(""),
+		Text("Memory Banks"),
+		ForEach(&memBanks, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(50),
+			)
+		}),
+		Text(""),
+		Text("Process List"),
+		ForEach(&procList, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(40),
+			)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -299,35 +287,33 @@ func BenchmarkSyncClearHeavy(b *testing.B) {
 	memBanks := stressData.Items[8:16]
 	procList := stressData.Items[16:50]
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: &stressData.Title},
-			TextNode{Content: "═══════════════════════════════════════════════════════════════"},
-			TextNode{Content: "CPU Cores"},
-			ForEach(&cpuCores, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 50},
-				}}
-			}),
-			TextNode{Content: ""},
-			TextNode{Content: "Memory Banks"},
-			ForEach(&memBanks, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 50},
-				}}
-			}),
-			TextNode{Content: ""},
-			TextNode{Content: "Process List"},
-			ForEach(&procList, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 40},
-				}}
-			}),
-		},
-	}
+	ui := VBox(
+		Text(&stressData.Title),
+		Text("═══════════════════════════════════════════════════════════════"),
+		Text("CPU Cores"),
+		ForEach(&cpuCores, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(50),
+			)
+		}),
+		Text(""),
+		Text("Memory Banks"),
+		ForEach(&memBanks, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(50),
+			)
+		}),
+		Text(""),
+		Text("Process List"),
+		ForEach(&procList, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(40),
+			)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -348,17 +334,15 @@ func BenchmarkAsyncClear100Items(b *testing.B) {
 	pool := NewBufferPool(80, 120)
 	defer pool.Stop()
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: &stressData.Title},
-			ForEach(&stressData.Items, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 30},
-				}}
-			}),
-		},
-	}
+	ui := VBox(
+		Text(&stressData.Title),
+		ForEach(&stressData.Items, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(30),
+			)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -379,17 +363,15 @@ func BenchmarkAsyncClear100Items(b *testing.B) {
 func BenchmarkSyncClear100Items(b *testing.B) {
 	buf := NewBuffer(80, 120)
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: &stressData.Title},
-			ForEach(&stressData.Items, func(item *StressItem) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &item.Name},
-					ProgressNode{Value: &item.CPU, BarWidth: 30},
-				}}
-			}),
-		},
-	}
+	ui := VBox(
+		Text(&stressData.Title),
+		ForEach(&stressData.Items, func(item *StressItem) any {
+			return HBox(
+				Text(&item.Name),
+				Progress(&item.CPU).Width(30),
+			)
+		}),
+	)
 
 	serial := Build(ui)
 
@@ -412,21 +394,19 @@ func BenchmarkFlexVBox(b *testing.B) {
 	buf := NewBuffer(80, 50)
 	content := "flex content"
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: "Header"},
-			VBoxNode{Children: []any{
-				TextNode{Content: &content},
-			}}.Grow(1),
-			VBoxNode{Children: []any{
-				TextNode{Content: &content},
-			}}.Grow(2),
-			VBoxNode{Children: []any{
-				TextNode{Content: &content},
-			}}.Grow(1),
-			TextNode{Content: "Footer"},
-		},
-	}.Height(50)
+	ui := VBox.Height(50)(
+		Text("Header"),
+		VBox.Grow(1)(
+			Text(&content),
+		),
+		VBox.Grow(2)(
+			Text(&content),
+		),
+		VBox.Grow(1)(
+			Text(&content),
+		),
+		Text("Footer"),
+	)
 
 	serial := Build(ui)
 	buf.Clear()
@@ -445,13 +425,11 @@ func BenchmarkFlexHBox(b *testing.B) {
 	buf := NewBuffer(120, 30)
 	content := "flex content"
 
-	ui := HBoxNode{
-		Children: []any{
-			VBoxNode{Children: []any{TextNode{Content: &content}}}.Grow(1),
-			VBoxNode{Children: []any{TextNode{Content: &content}}}.Grow(2),
-			VBoxNode{Children: []any{TextNode{Content: &content}}}.Grow(1),
-		},
-	}
+	ui := HBox(
+		VBox.Grow(1)(Text(&content)),
+		VBox.Grow(2)(Text(&content)),
+		VBox.Grow(1)(Text(&content)),
+	)
 
 	serial := Build(ui)
 	buf.Clear()
@@ -470,22 +448,11 @@ func BenchmarkBorderedTitles(b *testing.B) {
 	buf := NewBuffer(80, 30)
 	val := "100%"
 
-	ui := HBoxNode{
-		Children: []any{
-			VBoxNode{
-				Title:    "STATUS",
-				Children: []any{TextNode{Content: &val}},
-			}.Border(BorderSingle).Grow(1),
-			VBoxNode{
-				Title:    "SYSTEMS",
-				Children: []any{TextNode{Content: &val}},
-			}.Border(BorderSingle).Grow(1),
-			VBoxNode{
-				Title:    "CAPACITY",
-				Children: []any{TextNode{Content: &val}},
-			}.Border(BorderSingle).Grow(1),
-		},
-	}
+	ui := HBox(
+		VBox.Border(BorderSingle).Title("STATUS").Grow(1)(Text(&val)),
+		VBox.Border(BorderSingle).Title("SYSTEMS").Grow(1)(Text(&val)),
+		VBox.Border(BorderSingle).Title("CAPACITY").Grow(1)(Text(&val)),
+	)
 
 	serial := Build(ui)
 	buf.Clear()
@@ -506,16 +473,14 @@ func BenchmarkLeaderIntFloat(b *testing.B) {
 	memVal := 4.2
 	dskVal := 120
 
-	ui := VBoxNode{
-		Children: []any{
-			LeaderNode{Label: "CPU USAGE", Value: &cpuVal},
-			LeaderNode{Label: "MEMORY", Value: &memVal},
-			LeaderNode{Label: "DISK FREE", Value: &dskVal},
-			LeaderNode{Label: "CPU USAGE", Value: &cpuVal},
-			LeaderNode{Label: "MEMORY", Value: &memVal},
-			LeaderNode{Label: "DISK FREE", Value: &dskVal},
-		},
-	}
+	ui := VBox(
+		Leader("CPU USAGE", &cpuVal),
+		Leader("MEMORY", &memVal),
+		Leader("DISK FREE", &dskVal),
+		Leader("CPU USAGE", &cpuVal),
+		Leader("MEMORY", &memVal),
+		Leader("DISK FREE", &dskVal),
+	)
 
 	serial := Build(ui)
 	buf.Clear()

@@ -13,25 +13,19 @@ func TestIfWithGrowBorder(t *testing.T) {
 	// VBoxNode{Grow(1)} containing:
 	//   - VBoxNode{Border, Grow(1)} "Timing"
 	//   - If(showProcs).Then(VBoxNode{Border, Grow(2)} "Processes")
-	view := VBoxNode{Children: []any{
-		VBoxNode{
-			Title: "Timing",
-			Children: []any{
-				TextNode{Content: "Line 1"},
-				TextNode{Content: "Line 2"},
-				TextNode{Content: "Line 3"},
-			},
-		}.Border(BorderSingle).BorderFG(Yellow).Grow(1),
+	view := VBox.Grow(1)(
+		VBox.Border(BorderSingle).BorderFG(Yellow).Title("Timing").Grow(1)(
+			Text("Line 1"),
+			Text("Line 2"),
+			Text("Line 3"),
+		),
 
-		If(&showProcs).Eq(true).Then(VBoxNode{
-			Title: "Processes",
-			Children: []any{
-				TextNode{Content: "Process 1"},
-				TextNode{Content: "Process 2"},
-				TextNode{Content: "Process 3"},
-			},
-		}.Border(BorderSingle).BorderFG(BrightBlue).Grow(2)),
-	}}.Grow(1)
+		If(&showProcs).Eq(true).Then(VBox.Border(BorderSingle).BorderFG(BrightBlue).Title("Processes").Grow(2)(
+			Text("Process 1"),
+			Text("Process 2"),
+			Text("Process 3"),
+		)),
+	)
 
 	// Build template
 	tmpl := Build(view)
@@ -104,54 +98,42 @@ func TestDashboardLayoutBorders(t *testing.T) {
 	//   ]}.Grow(1)  // The OUTER Col also has Grow!
 	//   Text "Footer"
 	// ]}
-	view := VBoxNode{Children: []any{
+	view := VBox(
 		// Fixed header
-		TextNode{Content: "Dashboard Header"},
-		TextNode{Content: "CPU: [████████████________] 60%"},
+		Text("Dashboard Header"),
+		Text("CPU: [████████████________] 60%"),
 
 		// Main content row (horizontal flex)
-		HBoxNode{Gap: 1, Children: []any{
-			VBoxNode{
-				Title: "Stats",
-				Children: []any{
-					TextNode{Content: "Tasks: 100"},
-					TextNode{Content: "Memory: 4GB"},
-				},
-			}.Border(BorderSingle).BorderFG(Cyan).Grow(1),
-			VBoxNode{
-				Title: "Load",
-				Children: []any{
-					If(&showGraph).Eq(true).Then(
-						TextNode{Content: "Graph: ▁▂▃▄▅▆▇█"},
-					),
-				},
-			}.Border(BorderRounded).BorderFG(Green).Grow(2),
-		}},
+		HBox.Gap(1)(
+			VBox.Border(BorderSingle).BorderFG(Cyan).Title("Stats").Grow(1)(
+				Text("Tasks: 100"),
+				Text("Memory: 4GB"),
+			),
+			VBox.Border(BorderRounded).BorderFG(Green).Title("Load").Grow(2)(
+				If(&showGraph).Eq(true).Then(
+					Text("Graph: ▁▂▃▄▅▆▇█"),
+				),
+			),
+		),
 
 		// Middle section with vertical flex - THIS IS THE KEY PART
 		// The outer Col has Grow(1), inner children have Grow(1) and Grow(2)
-		VBoxNode{Children: []any{
-			VBoxNode{
-				Title: "Timing",
-				Children: []any{
-					TextNode{Content: "Render: 100µs"},
-					TextNode{Content: "Flush: 50µs"},
-				},
-			}.Border(BorderDouble).BorderFG(Yellow).Grow(1),
+		VBox.Grow(1)( // <-- OUTER COL HAS GROW!
+			VBox.Border(BorderDouble).BorderFG(Yellow).Title("Timing").Grow(1)(
+				Text("Render: 100µs"),
+				Text("Flush: 50µs"),
+			),
 
-			If(&showProcs).Eq(true).Then(VBoxNode{
-				Title: "Processes",
-				Children: []any{
-					TextNode{Content: "PID    NAME     CPU"},
-					TextNode{Content: "1001   nginx    2.5%"},
-					TextNode{Content: "1002   node     5.2%"},
-				},
-			}.Border(BorderSingle).BorderFG(BrightBlue).Grow(2)),
-		}}.Grow(1), // <-- OUTER COL HAS GROW!
+			If(&showProcs).Eq(true).Then(VBox.Border(BorderSingle).BorderFG(BrightBlue).Title("Processes").Grow(2)(
+				Text("PID    NAME     CPU"),
+				Text("1001   nginx    2.5%"),
+				Text("1002   node     5.2%"),
+			)),
+		),
 
 		// Fixed footer
-		TextNode{Content: "Press q to quit"},
-	}}
+		Text("Press q to quit"),
+	)
 
 	tmpl := Build(view)
 	buf := NewBuffer(80, 40)
@@ -190,36 +172,27 @@ func TestDashboardLayoutBorders(t *testing.T) {
 // TestHBoxWithBorderedChildren tests that borders inside HBox flex children
 // are drawn correctly.
 func TestHBoxWithBorderedChildren(t *testing.T) {
-	view := HBoxNode{Gap: 1, Children: []any{
+	view := HBox.Gap(1)(
 		// Left panel
-		VBoxNode{Children: []any{
-			VBoxNode{
-				Title: "Stats",
-				Children: []any{
-					TextNode{Content: "Tasks: 142"},
-					TextNode{Content: "Sleeping: 138"},
-				},
-			}.Border(BorderSingle).BorderFG(Cyan),
-			VBoxNode{
-				Title: "Load",
-				Children: []any{
-					TextNode{Content: "1.17, 0.69, 0.85"},
-				},
-			}.Border(BorderRounded).BorderFG(Green),
-		}}.Grow(1),
+		VBox.Grow(1)(
+			VBox.Border(BorderSingle).BorderFG(Cyan).Title("Stats")(
+				Text("Tasks: 142"),
+				Text("Sleeping: 138"),
+			),
+			VBox.Border(BorderRounded).BorderFG(Green).Title("Load")(
+				Text("1.17, 0.69, 0.85"),
+			),
+		),
 
 		// Right panel
-		VBoxNode{Children: []any{
-			VBoxNode{
-				Title: "Info",
-				Children: []any{
-					TextNode{Content: "Line 1"},
-					TextNode{Content: "Line 2"},
-					TextNode{Content: "Line 3"},
-				},
-			}.Border(BorderSingle).BorderFG(Magenta),
-		}}.Grow(2),
-	}}
+		VBox.Grow(2)(
+			VBox.Border(BorderSingle).BorderFG(Magenta).Title("Info")(
+				Text("Line 1"),
+				Text("Line 2"),
+				Text("Line 3"),
+			),
+		),
+	)
 
 	tmpl := Build(view)
 	buf := NewBuffer(60, 15)

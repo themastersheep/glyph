@@ -3480,17 +3480,13 @@ func (ed *Editor) buildBlockSelectionSpans(line string, startCol, endCol int, no
 
 // buildWindowView builds the view for a single window
 func buildWindowView(w *Window, focused bool) any {
-	return glyph.VBoxNode{Children: []any{
+	return glyph.VBox(
 		// Content area - imperative layer, efficiently updated
 		// Width is set for vertical splits to constrain each window's area
-		glyph.LayerViewNode{
-			Layer:      w.contentLayer,
-			ViewHeight: int16(w.viewportHeight),
-			ViewWidth:  int16(w.viewportWidth),
-		},
+		glyph.LayerView(w.contentLayer).ViewHeight(int16(w.viewportHeight)).ViewWidth(int16(w.viewportWidth)),
 		// Vim-style status bar (inverse video, shows filename and position)
 		glyph.RichTextNode{Spans: &w.StatusBar},
-	}}
+	)
 }
 
 // buildNodeView recursively builds the view for a split node
@@ -3505,10 +3501,10 @@ func buildNodeView(node *SplitNode, focusedWindow *Window) any {
 
 	if node.Direction == SplitHorizontal {
 		// Stack vertically (Col)
-		return glyph.VBoxNode{Children: []any{child0, child1}}
+		return glyph.VBox(child0, child1)
 	}
 	// Side by side (Row)
-	return glyph.HBoxNode{Children: []any{child0, child1}}
+	return glyph.HBox(child0, child1)
 }
 
 func buildView(ed *Editor) any {
@@ -3516,22 +3512,19 @@ func buildView(ed *Editor) any {
 	windowTree := buildNodeView(ed.root, ed.focusedWindow)
 
 	// Wrap in Col to add wildmenu and status line at bottom
-	return glyph.VBoxNode{Children: []any{
+	return glyph.VBox(
 		windowTree,
 		// Wildmenu appears above status line when active
-		glyph.IfNode{
-			Cond: &ed.cmdCompletionActive,
-			Then: glyph.RichTextNode{Spans: &ed.cmdWildmenuSpans},
-		},
-		glyph.TextNode{Content: &ed.StatusLine},
-	}}
+		glyph.If(&ed.cmdCompletionActive).Eq(true).Then(glyph.RichTextNode{Spans: &ed.cmdWildmenuSpans}),
+		glyph.Text(&ed.StatusLine),
+	)
 }
 
 // buildFuzzyView creates the declarative fuzzy finder overlay view
 func buildFuzzyView(ed *Editor) any {
-	return glyph.VBoxNode{Children: []any{
+	return glyph.VBox(
 		// Prompt line with query
-		glyph.TextNode{Content: &ed.fuzzy.Query, Style: glyph.Style{Attr: glyph.AttrBold}},
+		glyph.Text(&ed.fuzzy.Query).Bold(),
 		// Results list with selection
 		&glyph.SelectionList{
 			Items:      &ed.fuzzy.Matches,
@@ -3539,12 +3532,12 @@ func buildFuzzyView(ed *Editor) any {
 			Marker:     "> ",
 			MaxVisible: 20,
 			Render: func(s *string) any {
-				return glyph.TextNode{Content: s}
+				return glyph.Text(s)
 			},
 		},
 		// Status line
-		glyph.TextNode{Content: &ed.StatusLine},
-	}}
+		glyph.Text(&ed.StatusLine),
+	)
 }
 
 // TextObjectFunc return (start, end) range - end is exclusive

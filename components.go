@@ -1195,7 +1195,7 @@ func ForEach[T any](items *[]T, template func(item *T) any) ForEachC[T] {
 
 // compileTo implements forEachCompiler for template compilation
 func (f ForEachC[T]) compileTo(t *Template, parent int16, depth int) int16 {
-	return t.compileForEach(ForEachNode{Items: f.items, Render: f.template}, parent, depth)
+	return t.compileForEach(f.items, f.template, parent, depth)
 }
 
 // ============================================================================

@@ -9,16 +9,16 @@ func TestV2SelectionListBasic(t *testing.T) {
 	items := []string{"Apple", "Banana", "Cherry"}
 	selected := 1
 
-	view := VBoxNode{Children: []any{
+	view := VBox(
 		&SelectionList{
 			Items:    &items,
 			Selected: &selected,
 			Marker:   "> ",
 			Render: func(s *string) any {
-				return TextNode{Content: s}
+				return Text(s)
 			},
 		},
-	}}
+	)
 
 	tmpl := Build(view)
 	buf := NewBuffer(40, 10)
@@ -53,16 +53,16 @@ func TestV2SelectionListWithRender(t *testing.T) {
 	items := []string{"First", "Second", "Third"}
 	selected := 0
 
-	view := VBoxNode{Children: []any{
+	view := VBox(
 		&SelectionList{
 			Items:    &items,
 			Selected: &selected,
 			Marker:   "* ",
 			Render: func(s *string) any {
-				return TextNode{Content: s}
+				return Text(s)
 			},
 		},
-	}}
+	)
 
 	tmpl := Build(view)
 	buf := NewBuffer(40, 10)
@@ -87,11 +87,11 @@ func TestV2SelectionListMaxVisible(t *testing.T) {
 		Marker:     "> ",
 		MaxVisible: 3,
 		Render: func(s *string) any {
-			return TextNode{Content: s}
+			return Text(s)
 		},
 	}
 
-	view := VBoxNode{Children: []any{list}}
+	view := VBox(list)
 
 	tmpl := Build(view)
 	buf := NewBuffer(40, 10)
@@ -130,11 +130,11 @@ func TestV2SelectionListScrolling(t *testing.T) {
 		Marker:     "> ",
 		MaxVisible: 3,
 		Render: func(s *string) any {
-			return TextNode{Content: s}
+			return Text(s)
 		},
 	}
 
-	view := VBoxNode{Children: []any{list}}
+	view := VBox(list)
 
 	tmpl := Build(view)
 	buf := NewBuffer(40, 10)
@@ -180,21 +180,18 @@ func TestSelectionListOverflowClipped(t *testing.T) {
 		Marker:     "> ",
 		MaxVisible: 20,
 		Render: func(s *string) any {
-			return TextNode{Content: s}
+			return Text(s)
 		},
 	}
 
 	// Layout mirrors pprofin: bordered root, header, grow list, footer
-	view := VBoxNode{
-		Title:    "test",
-		Children: []any{
-			TextNode{Content: "header"},                       // 1 line
-			HRuleNode{},                                       // 1 line
-			VBoxNode{Children: []any{list}}.Grow(1),           // flex fill
-			HRuleNode{},                                       // 1 line
-			TextNode{Content: "footer"},                       // 1 line
-		},
-	}.Border(BorderSingle)
+	view := VBox.Border(BorderSingle).Title("test")(
+		Text("header"),         // 1 line
+		HRule(),                // 1 line
+		VBox.Grow(1)(list),     // flex fill
+		HRule(),                // 1 line
+		Text("footer"),         // 1 line
+	)
 
 	screenH := int16(15)
 	tmpl := Build(view)
@@ -250,20 +247,17 @@ func TestSelectionListOverflowScrolling(t *testing.T) {
 		Marker:     "> ",
 		MaxVisible: 20,
 		Render: func(s *string) any {
-			return TextNode{Content: s}
+			return Text(s)
 		},
 	}
 
-	view := VBoxNode{
-		Title:    "test",
-		Children: []any{
-			TextNode{Content: "header"},
-			HRuleNode{},
-			VBoxNode{Children: []any{list}}.Grow(1),
-			HRuleNode{},
-			TextNode{Content: "footer"},
-		},
-	}.Border(BorderSingle)
+	view := VBox.Border(BorderSingle).Title("test")(
+		Text("header"),
+		HRule(),
+		VBox.Grow(1)(list),
+		HRule(),
+		Text("footer"),
+	)
 
 	screenH := int16(15)
 	tmpl := Build(view)
