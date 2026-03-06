@@ -115,6 +115,158 @@ func TestV2DynamicText(t *testing.T) {
 	}
 }
 
+func TestFuncText(t *testing.T) {
+	// basic: func is called each render
+	counter := 0
+	tmpl := Build(VBoxNode{Children: []any{
+		TextNode{Content: func() string { return fmt.Sprintf("count:%d", counter) }},
+	}})
+
+	buf := NewBuffer(40, 10)
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "count:0" {
+		t.Errorf("render 1: got %q, want %q", got, "count:0")
+	}
+
+	counter = 7
+	buf.Clear()
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "count:7" {
+		t.Errorf("render 2: got %q, want %q", got, "count:7")
+	}
+}
+
+func TestFuncTextViaTextC(t *testing.T) {
+	// same but through the Text() functional API
+	val := "hello"
+	tmpl := Build(VBox(
+		Text(func() string { return val }),
+	))
+
+	buf := NewBuffer(40, 10)
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "hello" {
+		t.Errorf("render 1: got %q, want %q", got, "hello")
+	}
+
+	val = "world"
+	buf.Clear()
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "world" {
+		t.Errorf("render 2: got %q, want %q", got, "world")
+	}
+}
+
+func TestFuncTextWidth(t *testing.T) {
+	// width is derived from the func return value when no explicit Width set
+	val := "hi"
+	tmpl := Build(HBox(
+		Text(func() string { return val }),
+		Text("!"),
+	))
+
+	buf := NewBuffer(40, 5)
+	tmpl.Execute(buf, 40, 5)
+	line := buf.GetLine(0)
+	if !strings.Contains(line, "hi") {
+		t.Errorf("expected 'hi' in line: %q", line)
+	}
+	if !strings.Contains(line, "!") {
+		t.Errorf("expected '!' in line: %q", line)
+	}
+}
+
+func TestFuncTextWithStyle(t *testing.T) {
+	// styling (bold, FG) applies correctly
+	val := "styled"
+	tmpl := Build(VBox(
+		Text(func() string { return val }).Bold(),
+	))
+
+	buf := NewBuffer(40, 10)
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "styled" {
+		t.Errorf("got %q, want %q", got, "styled")
+	}
+}
+
+func TestFuncTextClosureOverMultipleVars(t *testing.T) {
+	// real-world pattern: formatted derived value
+	done, total := 3, 10
+	tmpl := Build(VBox(
+		Text(func() string { return fmt.Sprintf("%d/%d", done, total) }),
+	))
+
+	buf := NewBuffer(40, 10)
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "3/10" {
+		t.Errorf("render 1: got %q, want %q", got, "3/10")
+	}
+
+	done = 10
+	buf.Clear()
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "10/10" {
+		t.Errorf("render 2: got %q, want %q", got, "10/10")
+	}
+}
+
+func TestFuncTextInHBox(t *testing.T) {
+	// func text renders correctly when siblings are present
+	label := "status"
+	tmpl := Build(HBox(
+		Text("Label: "),
+		Text(func() string { return label }),
+	))
+
+	buf := NewBuffer(40, 5)
+	tmpl.Execute(buf, 40, 5)
+	line := buf.GetLine(0)
+	if !strings.Contains(line, "Label: ") {
+		t.Errorf("missing label in %q", line)
+	}
+	if !strings.Contains(line, "status") {
+		t.Errorf("missing func value in %q", line)
+	}
+
+	label = "online"
+	buf.Clear()
+	tmpl.Execute(buf, 40, 5)
+	line = buf.GetLine(0)
+	if !strings.Contains(line, "online") {
+		t.Errorf("after update: missing 'online' in %q", line)
+	}
+}
+
+func TestFuncTextInIf(t *testing.T) {
+	// func text inside conditional branch
+	show := true
+	val := "visible"
+	tmpl := Build(VBox(
+		If(&show).Then(Text(func() string { return val })),
+	))
+
+	buf := NewBuffer(40, 10)
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "visible" {
+		t.Errorf("render 1: got %q, want %q", got, "visible")
+	}
+
+	val = "updated"
+	buf.Clear()
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "updated" {
+		t.Errorf("render 2: got %q, want %q", got, "updated")
+	}
+
+	show = false
+	buf.Clear()
+	tmpl.Execute(buf, 40, 10)
+	if got := buf.GetLine(0); got != "" {
+		t.Errorf("hidden: expected empty line, got %q", got)
+	}
+}
+
 func TestV2Progress(t *testing.T) {
 	pct := 50
 

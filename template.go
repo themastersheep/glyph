@@ -177,7 +177,8 @@ type Op struct {
 	// Value access - one used based on Kind
 	StaticStr string
 	StrPtr    *string
-	StrOff    uintptr // offset from element base (for ForEach)
+	StrOff    uintptr       // offset from element base (for ForEach)
+	StrFn     func() string // called each frame
 	TextStyle Style   // style for text rendering
 
 	StaticInt int
@@ -374,6 +375,7 @@ const (
 	OpText OpKind = iota
 	OpTextPtr
 	OpTextOff
+	OpTextFn
 
 	OpProgress
 	OpProgressPtr
@@ -1176,6 +1178,9 @@ func (t *Template) compileText(v TextNode, parent int16, depth int, elemBase uns
 			op.Kind = OpTextPtr
 			op.StrPtr = val
 		}
+	case func() string:
+		op.Kind = OpTextFn
+		op.StrFn = val
 	}
 
 	return t.addOp(op, depth)
@@ -1528,6 +1533,9 @@ func (t *Template) compileTextC(v TextC, parent int16, depth int, elemBase unsaf
 			op.Kind = OpTextPtr
 			op.StrPtr = val
 		}
+	case func() string:
+		op.Kind = OpTextFn
+		op.StrFn = val
 	}
 
 	return t.addOp(op, depth)
@@ -2273,6 +2281,9 @@ func (t *Template) computeIntrinsicWidth(idx int16) int16 {
 	if op.Kind == OpTextPtr && op.StrPtr != nil {
 		return int16(utf8.RuneCountInString(*op.StrPtr)) + op.marginH()
 	}
+	if op.Kind == OpTextFn && op.StrFn != nil {
+		return int16(utf8.RuneCountInString(op.StrFn())) + op.marginH()
+	}
 
 	return op.marginH()
 }
@@ -2292,6 +2303,13 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 			geom.W = op.Width
 		} else {
 			geom.W = int16(utf8.RuneCountInString(*op.StrPtr))
+		}
+
+	case OpTextFn:
+		if op.Width > 0 {
+			geom.W = op.Width
+		} else if op.StrFn != nil {
+			geom.W = int16(utf8.RuneCountInString(op.StrFn()))
 		}
 
 	case OpTextOff:
@@ -2457,36 +2475,25 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 		// Calculate width from the active branch content
 		condTrue := (op.CondPtr != nil && *op.CondPtr) ||
 			(op.CondNode != nil && op.CondNode.evaluateWithBase(elemBase))
-		if condTrue && op.ThenTmpl != nil {
-			op.ThenTmpl.elemBase = elemBase
-			// Check if content has fixed-width children (ContentSized)
-			if len(op.ThenTmpl.ops) > 0 && op.ThenTmpl.ops[0].ContentSized {
-				// Content has fixed-width children - compute intrinsic width
-				intrinsicW := op.ThenTmpl.computeIntrinsicWidth(0)
-				op.ThenTmpl.distributeWidths(intrinsicW, elemBase)
+		var subTmpl *Template
+		if condTrue {
+			subTmpl = op.ThenTmpl
+		} else {
+			subTmpl = op.ElseTmpl
+		}
+		if subTmpl != nil {
+			subTmpl.elemBase = elemBase
+			// computeIntrinsicWidth handles both ContentSized containers and
+			// leaf nodes (OpText, OpTextPtr, etc.) that have a computable fixed width.
+			// Falls back to 0 for truly flexible content (Space, unsized containers).
+			intrinsicW := subTmpl.computeIntrinsicWidth(0)
+			if intrinsicW > 0 {
+				subTmpl.distributeWidths(intrinsicW, elemBase)
 				geom.W = intrinsicW
 			} else {
-				// Normal case: distribute available width
-				op.ThenTmpl.distributeWidths(availW, elemBase)
-				if len(op.ThenTmpl.geom) > 0 {
-					geom.W = op.ThenTmpl.geom[0].W
-				} else {
-					geom.W = 0
-				}
-			}
-		} else if !condTrue && op.ElseTmpl != nil {
-			op.ElseTmpl.elemBase = elemBase
-			// Check if content has fixed-width children (ContentSized)
-			if len(op.ElseTmpl.ops) > 0 && op.ElseTmpl.ops[0].ContentSized {
-				intrinsicW := op.ElseTmpl.computeIntrinsicWidth(0)
-				op.ElseTmpl.distributeWidths(intrinsicW, elemBase)
-				geom.W = intrinsicW
-			} else {
-				op.ElseTmpl.distributeWidths(availW, elemBase)
-				if len(op.ElseTmpl.geom) > 0 {
-					geom.W = op.ElseTmpl.geom[0].W
-				} else {
-					geom.W = 0
+				subTmpl.distributeWidths(availW, elemBase)
+				if len(subTmpl.geom) > 0 {
+					geom.W = subTmpl.geom[0].W
 				}
 			}
 		} else {
@@ -3906,6 +3913,19 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 		}
 		buf.WriteStringFast(x, int(absY), text, style, int(maxW))
 
+	case OpTextFn:
+		style := t.effectiveStyle(op.TextStyle)
+		text := applyTransform(op.StrFn(), style.Transform)
+		x := int(absX)
+		if style.Align != AlignLeft {
+			alignW := op.Width
+			if alignW == 0 {
+				alignW = maxW
+			}
+			x += alignOffset(text, int(alignW), style.Align)
+		}
+		buf.WriteStringFast(x, int(absY), text, style, int(maxW))
+
 	case OpTextOff:
 		if t.elemBase == nil {
 			break
@@ -4357,6 +4377,7 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 
 // renderSubTemplate renders a sub-template (for ForEach) with element-bound data.
 func (t *Template) renderSubTemplate(buf *Buffer, sub *Template, globalX, globalY, maxW int16, elemBase unsafe.Pointer) {
+	sub.app = t.app
 	sub.clipMaxY = t.clipMaxY // propagate vertical clip
 	sub.elemBase = elemBase   // ensure renderOp paths (e.g. via renderJump) see the correct element
 	for i := range sub.ops {
@@ -4403,6 +4424,11 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 	case OpTextPtr:
 		style := mergeStyle(op.TextStyle)
 		text := applyTransform(*op.StrPtr, style.Transform)
+		buf.WriteStringFast(int(absX), int(absY), text, style, int(maxW))
+
+	case OpTextFn:
+		style := mergeStyle(op.TextStyle)
+		text := applyTransform(op.StrFn(), style.Transform)
 		buf.WriteStringFast(int(absX), int(absY), text, style, int(maxW))
 
 	case OpTextOff:
@@ -4916,6 +4942,9 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 				case OpTextPtr:
 					txt := applyTransform(*iterOp.StrPtr, effStyle.Transform)
 					buf.WriteStringFast(int(contentX), y, txt, textStyle, int(contentW))
+				case OpTextFn:
+					txt := applyTransform(iterOp.StrFn(), effStyle.Transform)
+					buf.WriteStringFast(int(contentX), y, txt, textStyle, int(contentW))
 				case OpTextOff:
 					strPtr := (*string)(unsafe.Pointer(uintptr(elemPtr) + iterOp.StrOff))
 					txt := applyTransform(*strPtr, effStyle.Transform)
@@ -5206,6 +5235,12 @@ func (t *Template) renderOverlay(buf *Buffer, op *Op, screenW, screenH int16) {
 
 	// Link app to child template for jump mode support
 	op.OverlayChildTmpl.app = t.app
+
+	// Propagate overlay BG as inheritedFill so all child text cells render with
+	// the same explicit background, preventing patchy backdrop bleed-through
+	if op.OverlayBG.Mode != ColorDefault {
+		op.OverlayChildTmpl.inheritedFill = op.OverlayBG
+	}
 
 	// Calculate content size by doing a dry-run layout
 	childTmpl := op.OverlayChildTmpl
@@ -5797,7 +5832,7 @@ func (t *Template) DebugDump(prefix string) {
 
 func opKindName(k OpKind) string {
 	names := map[OpKind]string{
-		OpText: "Text", OpTextPtr: "TextPtr", OpProgress: "Progress",
+		OpText: "Text", OpTextPtr: "TextPtr", OpTextFn: "TextFn", OpProgress: "Progress",
 		OpContainer: "Container", OpIf: "If", OpForEach: "ForEach",
 		OpLayer: "Layer", OpOverlay: "Overlay", OpScreenEffect: "ScreenEffect", OpHRule: "HRule",
 		OpVRule: "VRule", OpSpacer: "Spacer", OpSelectionList: "SelectionList",
