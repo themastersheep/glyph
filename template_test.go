@@ -9,11 +9,11 @@ import (
 
 func TestV2BasicCol(t *testing.T) {
 	// Simple vertical layout
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Line 1"},
-		TextNode{Content: "Line 2"},
-		TextNode{Content: "Line 3"},
-	}})
+	tmpl := Build(VBox(
+		Text("Line 1"),
+		Text("Line 2"),
+		Text("Line 3"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -32,11 +32,11 @@ func TestV2BasicCol(t *testing.T) {
 
 func TestV2BasicRow(t *testing.T) {
 	// Simple horizontal layout
-	tmpl := Build(HBoxNode{Children: []any{
-		TextNode{Content: "A"},
-		TextNode{Content: "B"},
-		TextNode{Content: "C"},
-	}})
+	tmpl := Build(HBox(
+		Text("A"),
+		Text("B"),
+		Text("C"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -50,10 +50,10 @@ func TestV2BasicRow(t *testing.T) {
 
 func TestV2RowWithGap(t *testing.T) {
 	// Row with gap between children
-	tmpl := Build(HBoxNode{Gap: 2, Children: []any{
-		TextNode{Content: "A"},
-		TextNode{Content: "B"},
-	}})
+	tmpl := Build(HBox.Gap(2)(
+		Text("A"),
+		Text("B"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -67,14 +67,14 @@ func TestV2RowWithGap(t *testing.T) {
 
 func TestV2NestedContainers(t *testing.T) {
 	// Col containing Row
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
-		HBoxNode{Children: []any{
-			TextNode{Content: "Left"},
-			TextNode{Content: "Right"},
-		}},
-		TextNode{Content: "Footer"},
-	}})
+	tmpl := Build(VBox(
+		Text("Header"),
+		HBox(
+			Text("Left"),
+			Text("Right"),
+		),
+		Text("Footer"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -94,9 +94,9 @@ func TestV2DynamicText(t *testing.T) {
 	// Text with pointer binding
 	title := "Dynamic Title"
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: &title},
-	}})
+	tmpl := Build(VBox(
+		Text(&title),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -270,9 +270,9 @@ func TestFuncTextInIf(t *testing.T) {
 func TestV2Progress(t *testing.T) {
 	pct := 50
 
-	tmpl := Build(VBoxNode{Children: []any{
-		ProgressNode{Value: &pct, BarWidth: 10},
-	}})
+	tmpl := Build(VBox(
+		Progress(&pct).Width(10),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -286,9 +286,9 @@ func TestV2Progress(t *testing.T) {
 }
 
 func TestV2Border(t *testing.T) {
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Inside"},
-	}}.Border(BorderSingle))
+	tmpl := Build(VBox.Border(BorderSingle)(
+		Text("Inside"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -306,11 +306,11 @@ func TestV2Border(t *testing.T) {
 }
 
 func TestV2ColWithGap(t *testing.T) {
-	tmpl := Build(VBoxNode{Gap: 1, Children: []any{
-		TextNode{Content: "A"},
-		TextNode{Content: "B"},
-		TextNode{Content: "C"},
-	}})
+	tmpl := Build(VBox.Gap(1)(
+		Text("A"),
+		Text("B"),
+		Text("C"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -336,14 +336,11 @@ func TestV2ColWithGap(t *testing.T) {
 func TestV2IfTrue(t *testing.T) {
 	showDetails := true
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
-		IfNode{
-			Cond: &showDetails,
-			Then: TextNode{Content: "Details shown"},
-		},
-		TextNode{Content: "Footer"},
-	}})
+	tmpl := Build(VBox(
+		Text("Header"),
+		If(&showDetails).Eq(true).Then(Text("Details shown")),
+		Text("Footer"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -362,14 +359,11 @@ func TestV2IfTrue(t *testing.T) {
 func TestV2IfFalse(t *testing.T) {
 	showDetails := false
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
-		IfNode{
-			Cond: &showDetails,
-			Then: TextNode{Content: "Details shown"},
-		},
-		TextNode{Content: "Footer"},
-	}})
+	tmpl := Build(VBox(
+		Text("Header"),
+		If(&showDetails).Eq(true).Then(Text("Details shown")),
+		Text("Footer"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -386,14 +380,11 @@ func TestV2IfFalse(t *testing.T) {
 func TestV2IfDynamic(t *testing.T) {
 	showDetails := true
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
-		IfNode{
-			Cond: &showDetails,
-			Then: TextNode{Content: "Details"},
-		},
-		TextNode{Content: "Footer"},
-	}})
+	tmpl := Build(VBox(
+		Text("Header"),
+		If(&showDetails).Eq(true).Then(Text("Details")),
+		Text("Footer"),
+	))
 
 	// First render with condition true
 	buf := NewBuffer(40, 10)
@@ -428,16 +419,13 @@ func TestV2ForEach(t *testing.T) {
 		{Name: "Item 3"},
 	}
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "List:"},
-		ForEachNode{
-			Items: &items,
-			Render: func(item *testItem) any {
-				return TextNode{Content: &item.Name}
-			},
-		},
-		TextNode{Content: "End"},
-	}})
+	tmpl := Build(VBox(
+		Text("List:"),
+		ForEach(&items, func(item *testItem) any {
+				return Text(&item.Name)
+			}),
+		Text("End"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -462,16 +450,13 @@ func TestV2ForEach(t *testing.T) {
 func TestV2ForEachEmpty(t *testing.T) {
 	items := []testItem{}
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "List:"},
-		ForEachNode{
-			Items: &items,
-			Render: func(item *testItem) any {
-				return TextNode{Content: &item.Name}
-			},
-		},
-		TextNode{Content: "End"},
-	}})
+	tmpl := Build(VBox(
+		Text("List:"),
+		ForEach(&items, func(item *testItem) any {
+				return Text(&item.Name)
+			}),
+		Text("End"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -491,14 +476,11 @@ func TestV2ForEachDynamic(t *testing.T) {
 		{Name: "B"},
 	}
 
-	tmpl := Build(VBoxNode{Children: []any{
-		ForEachNode{
-			Items: &items,
-			Render: func(item *testItem) any {
-				return TextNode{Content: &item.Name}
-			},
-		},
-	}})
+	tmpl := Build(VBox(
+		ForEach(&items, func(item *testItem) any {
+				return Text(&item.Name)
+			}),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -540,25 +522,25 @@ func (s StatusBar) Build() any {
 	children := make([]any, 0, len(s.Items)*3)
 	for i, item := range s.Items {
 		if i > 0 {
-			children = append(children, TextNode{Content: " | "})
+			children = append(children, Text(" | "))
 		}
-		children = append(children, TextNode{Content: item.Label + ": "})
-		children = append(children, TextNode{Content: item.Value})
+		children = append(children, Text(item.Label + ": "))
+		children = append(children, Text(item.Value))
 	}
-	return HBoxNode{Children: children}
+	return HBox(children...)
 }
 
 func TestV2CustomComponent(t *testing.T) {
 	fps := "60.0"
 	frame := "1234"
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
+	tmpl := Build(VBox(
+		Text("Header"),
 		StatusBar{Items: []StatusItem{
 			{Label: "FPS", Value: &fps},
 			{Label: "Frame", Value: &frame},
 		}},
-	}})
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -595,10 +577,10 @@ func TestV2NestedCustomComponent(t *testing.T) {
 
 	// This is defined inline to test the pattern
 	build := func(c CardComponent) any {
-		return VBoxNode{Children: []any{
-			TextNode{Content: "[" + c.Card.Title + "]"},
-			TextNode{Content: c.Card.Content},
-		}}
+		return VBox(
+			Text("[" + c.Card.Title + "]"),
+			Text(c.Card.Content),
+		)
 	}
 
 	// Wrapper that implements Component
@@ -615,12 +597,12 @@ func TestV2NestedCustomComponent(t *testing.T) {
 
 	// Direct test with StatusBar nested in HBox
 	fps := "60"
-	tmpl := Build(HBoxNode{Gap: 2, Children: []any{
-		TextNode{Content: "Stats:"},
+	tmpl := Build(HBox.Gap(2)(
+		Text("Stats:"),
 		StatusBar{Items: []StatusItem{
 			{Label: "FPS", Value: &fps},
 		}},
-	}})
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -677,10 +659,10 @@ func (s CustomSparkline) Render(buf *Buffer, x, y, w, h int) {
 func TestCustomRenderer(t *testing.T) {
 	values := []float64{1, 3, 5, 7, 5, 3, 1, 2, 4, 6}
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "CPU:"},
+	tmpl := Build(VBox(
+		Text("CPU:"),
 		CustomSparkline{Values: &values, Width: 10},
-	}})
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -711,12 +693,12 @@ func TestCustomRenderer(t *testing.T) {
 func TestV2RendererInRow(t *testing.T) {
 	values := []float64{1, 2, 3, 4, 5}
 
-	tmpl := Build(HBoxNode{Gap: 1, Children: []any{
-		TextNode{Content: "CPU:"},
-		SparklineNode{Values: &values, Width: 5},
-		TextNode{Content: "MEM:"},
-		SparklineNode{Values: &values, Width: 5},
-	}})
+	tmpl := Build(HBox.Gap(1)(
+		Text("CPU:"),
+		Sparkline(&values).Width(5),
+		Text("MEM:"),
+		Sparkline(&values).Width(5),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -785,12 +767,12 @@ func TestV2CustomLayout(t *testing.T) {
 	tmpl := Build(Box{
 		Layout: Grid(3, 10, 1),
 		Children: []any{
-			TextNode{Content: "A"},
-			TextNode{Content: "B"},
-			TextNode{Content: "C"},
-			TextNode{Content: "D"},
-			TextNode{Content: "E"},
-			TextNode{Content: "F"},
+			Text("A"),
+			Text("B"),
+			Text("C"),
+			Text("D"),
+			Text("E"),
+			Text("F"),
 		},
 	})
 
@@ -824,19 +806,19 @@ func TestV2CustomLayout(t *testing.T) {
 
 func TestV2CustomLayoutNested(t *testing.T) {
 	// Grid inside a Col
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
+	tmpl := Build(VBox(
+		Text("Header"),
 		Box{
 			Layout: Grid(2, 15, 1),
 			Children: []any{
-				TextNode{Content: "Item1"},
-				TextNode{Content: "Item2"},
-				TextNode{Content: "Item3"},
-				TextNode{Content: "Item4"},
+				Text("Item1"),
+				Text("Item2"),
+				Text("Item3"),
+				Text("Item4"),
 			},
 		},
-		TextNode{Content: "Footer"},
-	}})
+		Text("Footer"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -881,9 +863,9 @@ func TestV2BoxInlineLayout(t *testing.T) {
 			return rects
 		},
 		Children: []any{
-			TextNode{Content: "A"},
-			TextNode{Content: "B"},
-			TextNode{Content: "C"},
+			Text("A"),
+			Text("B"),
+			Text("C"),
 		},
 	})
 
@@ -910,18 +892,18 @@ func TestV2ConditionInsideForEach(t *testing.T) {
 		{Name: "C", Selected: false},
 	}
 
-	tmpl := Build(VBoxNode{Children: []any{
+	tmpl := Build(VBox(
 		ForEach(&items, func(item *Item) any {
-			return HBoxNode{Children: []any{
+			return HBox(
 				If(&item.Selected).Eq(true).Then(
-					TextNode{Content: ">"},
+					Text(">"),
 				).Else(
-					TextNode{Content: " "},
+					Text(" "),
 				),
-				TextNode{Content: &item.Name},
-			}}
+				Text(&item.Name),
+			)
 		}),
-	}})
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -966,16 +948,16 @@ func TestV2ConditionNodeBuilder(t *testing.T) {
 	showGraph := true
 	showProcs := false
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
+	tmpl := Build(VBox(
+		Text("Header"),
 		If(&showGraph).Eq(true).Then(
-			TextNode{Content: "Graph visible"},
+			Text("Graph visible"),
 		),
 		If(&showProcs).Eq(true).Then(
-			TextNode{Content: "Procs visible"},
+			Text("Procs visible"),
 		),
-		TextNode{Content: "Footer"},
-	}})
+		Text("Footer"),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -1018,13 +1000,13 @@ func TestV2FlexGrow(t *testing.T) {
 	// Screen is 20 high, header is 1 line, footer is 1 line
 	// Middle section with Grow(1) should expand to fill remaining 18 lines
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
-		VBoxNode{Children: []any{
-			TextNode{Content: "Content"},
-		}}.Grow(1), // This should expand
-		TextNode{Content: "Footer"},
-	}})
+	tmpl := Build(VBox(
+		Text("Header"),
+		VBox.Grow(1)(
+			Text("Content"),
+		), // This should expand
+		Text("Footer"),
+	))
 
 	buf := NewBuffer(40, 20)
 	tmpl.Execute(buf, 40, 20)
@@ -1053,12 +1035,12 @@ func TestV2FlexGrowMultiple(t *testing.T) {
 	// flex1 should get 10 * 1/3 ≈ 3 lines
 	// flex2 should get 10 * 2/3 ≈ 6 lines (total with content = header at some offset)
 
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
-		VBoxNode{Children: []any{TextNode{Content: "A"}}}.Grow(1),
-		VBoxNode{Children: []any{TextNode{Content: "B"}}}.Grow(2),
-		TextNode{Content: "Footer"},
-	}})
+	tmpl := Build(VBox(
+		Text("Header"),
+		VBox.Grow(1)(Text("A")),
+		VBox.Grow(2)(Text("B")),
+		Text("Footer"),
+	))
 
 	buf := NewBuffer(40, 12)
 	tmpl.Execute(buf, 40, 12)
@@ -1091,13 +1073,13 @@ func TestV2FlexGrowHorizontal(t *testing.T) {
 	// Row width is 40, "Left" is 4 chars, "Right" is 5 chars
 	// Middle with Grow(1) should expand to fill remaining 31 chars
 
-	tmpl := Build(HBoxNode{Children: []any{
-		TextNode{Content: "Left"},
-		VBoxNode{Children: []any{
-			TextNode{Content: "X"},
-		}}.Grow(1), // This should expand horizontally
-		TextNode{Content: "Right"},
-	}})
+	tmpl := Build(HBox(
+		Text("Left"),
+		VBox.Grow(1)(
+			Text("X"),
+		), // This should expand horizontally
+		Text("Right"),
+	))
 
 	buf := NewBuffer(40, 5)
 	tmpl.Execute(buf, 40, 5)
@@ -1118,10 +1100,10 @@ func TestV2FlexGrowHorizontalMultiple(t *testing.T) {
 	// Row width is 30, no fixed children
 	// A with Grow(1) gets 1/3, B with Grow(2) gets 2/3
 
-	tmpl := Build(HBoxNode{Children: []any{
-		VBoxNode{Children: []any{TextNode{Content: "A"}}}.Grow(1),
-		VBoxNode{Children: []any{TextNode{Content: "B"}}}.Grow(2),
-	}})
+	tmpl := Build(HBox(
+		VBox.Grow(1)(Text("A")),
+		VBox.Grow(2)(Text("B")),
+	))
 
 	buf := NewBuffer(30, 5)
 	tmpl.Execute(buf, 30, 5)
@@ -1140,15 +1122,12 @@ func TestV2FlexGrowHorizontalMultiple(t *testing.T) {
 func TestJumpWrapsVBox(t *testing.T) {
 	// Jump should be a transparent wrapper - VBox content should display
 	called := false
-	tmpl := Build(VBoxNode{Children: []any{
-		JumpNode{
-			Child: VBoxNode{Children: []any{
-				TextNode{Content: "Line 1"},
-				TextNode{Content: "Line 2"},
-			}},
-			OnSelect: func() { called = true },
-		},
-	}})
+	tmpl := Build(VBox(
+		Jump(VBox(
+				Text("Line 1"),
+				Text("Line 2"),
+			), func() { called = true }),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -1170,17 +1149,14 @@ func TestJumpWrapsVBox(t *testing.T) {
 
 func TestJumpInHBoxWithSibling(t *testing.T) {
 	// Both VBox children in HBox should get width - even when one is wrapped in Jump
-	tmpl := Build(HBoxNode{Gap: 2, Children: []any{
-		VBoxNode{Children: []any{
-			TextNode{Content: "Panel 1"},
-		}},
-		JumpNode{
-			Child: VBoxNode{Children: []any{
-				TextNode{Content: "Panel 2"},
-			}},
-			OnSelect: func() {},
-		},
-	}})
+	tmpl := Build(HBox.Gap(2)(
+		VBox(
+			Text("Panel 1"),
+		),
+		Jump(VBox(
+				Text("Panel 2"),
+			), func() {}),
+	))
 
 	buf := NewBuffer(40, 5)
 	tmpl.Execute(buf, 40, 5)
@@ -1213,15 +1189,15 @@ func TestForEachMultipleStringFields(t *testing.T) {
 		{Icon: "🔍", Label: "Find", Description: "Search text"},
 	}
 
-	tmpl := Build(VBoxNode{Children: []any{
+	tmpl := Build(VBox(
 		ForEach(&items, func(item *Item) any {
-			return HBoxNode{Gap: 1, Children: []any{
-				TextNode{Content: &item.Icon},
-				TextNode{Content: &item.Label},
-				TextNode{Content: &item.Description},
-			}}
+			return HBox.Gap(1)(
+				Text(&item.Icon),
+				Text(&item.Label),
+				Text(&item.Description),
+			)
 		}),
-	}})
+	))
 
 	buf := NewBuffer(60, 10)
 	tmpl.Execute(buf, 60, 10)
@@ -1281,15 +1257,15 @@ func TestSelectionListMultipleFields(t *testing.T) {
 		Marker:     "> ",
 		MaxVisible: 10,
 		Render: func(item *Item) any {
-			return HBoxNode{Gap: 1, Children: []any{
-				TextNode{Content: &item.Icon},
-				TextNode{Content: &item.Label},
-				TextNode{Content: &item.Description},
-			}}
+			return HBox.Gap(1)(
+				Text(&item.Icon),
+				Text(&item.Label),
+				Text(&item.Description),
+			)
 		},
 	}
 
-	tmpl := Build(VBoxNode{Children: []any{list}})
+	tmpl := Build(VBox(list))
 	buf := NewBuffer(60, 10)
 	tmpl.Execute(buf, 60, 10)
 
@@ -1343,7 +1319,7 @@ func TestSelectionListDefaultStyle(t *testing.T) {
 		SelectedStyle: Style{BG: selectedBG},
 	}
 
-	tmpl := Build(VBoxNode{Children: []any{list}})
+	tmpl := Build(VBox(list))
 	buf := NewBuffer(20, 3)
 	tmpl.Execute(buf, 20, 3)
 
@@ -1366,14 +1342,14 @@ func TestSelectionListDefaultStyle(t *testing.T) {
 	}
 }
 
-// TestSpacerGrow tests that SpacerNode{} defaults to grow and fills available space
+// TestSpacerGrow tests that Space() defaults to grow and fills available space
 func TestSpacerGrow(t *testing.T) {
-	// SpacerNode{} should grow to fill remaining space in HBox
-	tmpl := Build(HBoxNode{Children: []any{
-		TextNode{Content: "Left"},
-		SpacerNode{},
-		TextNode{Content: "Right"},
-	}})
+	// Space() should grow to fill remaining space in HBox
+	tmpl := Build(HBox(
+		Text("Left"),
+		Space(),
+		Text("Right"),
+	))
 
 	buf := NewBuffer(20, 1)
 	tmpl.Execute(buf, 20, 1)
@@ -1390,13 +1366,13 @@ func TestSpacerGrow(t *testing.T) {
 	}
 }
 
-// TestSpacerWithChar tests that SpacerNode{Char: '.'} fills with dots
+// TestSpacerWithChar tests that Space().Char('.') fills with dots
 func TestSpacerWithChar(t *testing.T) {
-	tmpl := Build(HBoxNode{Children: []any{
-		TextNode{Content: "A"},
-		SpacerNode{Char: '.'},
-		TextNode{Content: "B"},
-	}})
+	tmpl := Build(HBox(
+		Text("A"),
+		Space().Char('.'),
+		Text("B"),
+	))
 
 	buf := NewBuffer(10, 1)
 	tmpl.Execute(buf, 10, 1)
@@ -1417,13 +1393,13 @@ func TestSpacerWithChar(t *testing.T) {
 	}
 }
 
-// TestSpacerFixed tests that SpacerNode{Height: 1} is fixed (no grow)
+// TestSpacerFixed tests that SpaceH(1) is fixed (no grow)
 func TestSpacerFixed(t *testing.T) {
-	tmpl := Build(HBoxNode{Children: []any{
-		TextNode{Content: "A"},
-		SpacerNode{Width: 3}, // fixed 3-char spacer
-		TextNode{Content: "B"},
-	}})
+	tmpl := Build(HBox(
+		Text("A"),
+		SpaceW(3), // fixed 3-char spacer
+		Text("B"),
+	))
 
 	buf := NewBuffer(20, 1)
 	tmpl.Execute(buf, 20, 1)
@@ -1441,20 +1417,20 @@ func TestSpacerFixed(t *testing.T) {
 func TestComplexNestedLayouts(t *testing.T) {
 	t.Run("deeply nested VBox in HBox", func(t *testing.T) {
 		// HBox containing multiple VBoxes
-		tmpl := Build(HBoxNode{Gap: 1, Children: []any{
-			VBoxNode{Children: []any{
-				TextNode{Content: "A1"},
-				TextNode{Content: "A2"},
-				TextNode{Content: "A3"},
-			}},
-			VBoxNode{Children: []any{
-				TextNode{Content: "B1"},
-				TextNode{Content: "B2"},
-			}},
-			VBoxNode{Children: []any{
-				TextNode{Content: "C1"},
-			}},
-		}})
+		tmpl := Build(HBox.Gap(1)(
+			VBox(
+				Text("A1"),
+				Text("A2"),
+				Text("A3"),
+			),
+			VBox(
+				Text("B1"),
+				Text("B2"),
+			),
+			VBox(
+				Text("C1"),
+			),
+		))
 
 		buf := NewBuffer(20, 5)
 		tmpl.Execute(buf, 20, 5)
@@ -1476,20 +1452,20 @@ func TestComplexNestedLayouts(t *testing.T) {
 
 	t.Run("HBox inside VBox inside HBox", func(t *testing.T) {
 		// 3 levels of nesting
-		tmpl := Build(HBoxNode{Gap: 1, Children: []any{
-			TextNode{Content: "["},
-			VBoxNode{Children: []any{
-				HBoxNode{Children: []any{
-					TextNode{Content: "X"},
-					TextNode{Content: "Y"},
-				}},
-				HBoxNode{Children: []any{
-					TextNode{Content: "1"},
-					TextNode{Content: "2"},
-				}},
-			}},
-			TextNode{Content: "]"},
-		}})
+		tmpl := Build(HBox.Gap(1)(
+			Text("["),
+			VBox(
+				HBox(
+					Text("X"),
+					Text("Y"),
+				),
+				HBox(
+					Text("1"),
+					Text("2"),
+				),
+			),
+			Text("]"),
+		))
 
 		buf := NewBuffer(20, 3)
 		tmpl.Execute(buf, 20, 3)
@@ -1508,17 +1484,17 @@ func TestComplexNestedLayouts(t *testing.T) {
 	})
 
 	t.Run("bordered container with nested content", func(t *testing.T) {
-		tmpl := Build(VBoxNode{Children: []any{
-			HBoxNode{Gap: 1, Children: []any{
-				TextNode{Content: "Name:"},
-				TextNode{Content: "Value"},
-			}},
-			HBoxNode{Gap: 1, Children: []any{
-				TextNode{Content: "Foo:"},
-				SpacerNode{},
-				TextNode{Content: "Bar"},
-			}},
-		}}.Border(BorderRounded))
+		tmpl := Build(VBox.Border(BorderRounded)(
+			HBox.Gap(1)(
+				Text("Name:"),
+				Text("Value"),
+			),
+			HBox.Gap(1)(
+				Text("Foo:"),
+				Space(),
+				Text("Bar"),
+			),
+		))
 
 		buf := NewBuffer(20, 5)
 		tmpl.Execute(buf, 20, 5)
@@ -1547,11 +1523,11 @@ func TestComplexNestedLayouts(t *testing.T) {
 	})
 
 	t.Run("nested borders", func(t *testing.T) {
-		tmpl := Build(VBoxNode{Children: []any{
-			VBoxNode{Children: []any{
-				TextNode{Content: "Inner"},
-			}}.Border(BorderSingle),
-		}}.Border(BorderDouble))
+		tmpl := Build(VBox.Border(BorderDouble)(
+			VBox.Border(BorderSingle)(
+				Text("Inner"),
+			),
+		))
 
 		buf := NewBuffer(20, 6)
 		tmpl.Execute(buf, 20, 6)
@@ -1574,13 +1550,13 @@ func TestComplexNestedLayouts(t *testing.T) {
 	})
 
 	t.Run("multiple spacers in HBox", func(t *testing.T) {
-		tmpl := Build(HBoxNode{Children: []any{
-			TextNode{Content: "L"},
-			SpacerNode{},
-			TextNode{Content: "M"},
-			SpacerNode{},
-			TextNode{Content: "R"},
-		}})
+		tmpl := Build(HBox(
+			Text("L"),
+			Space(),
+			Text("M"),
+			Space(),
+			Text("R"),
+		))
 
 		buf := NewBuffer(21, 1)
 		tmpl.Execute(buf, 21, 1)
@@ -1611,15 +1587,15 @@ func TestComplexNestedLayouts(t *testing.T) {
 			{Key: "gamma", Value: "3"},
 		}
 
-		tmpl := Build(VBoxNode{Children: []any{
+		tmpl := Build(VBox(
 			ForEach(&rows, func(r *Row) any {
-				return HBoxNode{Gap: 1, Children: []any{
-					TextNode{Content: &r.Key},
-					SpacerNode{Char: '.'},
-					TextNode{Content: &r.Value},
-				}}
+				return HBox.Gap(1)(
+					Text(&r.Key),
+					Space().Char('.'),
+					Text(&r.Value),
+				)
 			}),
-		}})
+		))
 
 		buf := NewBuffer(20, 5)
 		tmpl.Execute(buf, 20, 5)
@@ -1656,20 +1632,20 @@ func TestComplexNestedLayouts(t *testing.T) {
 			MaxVisible: 10,
 			Render: func(item *MenuItem) any {
 				// Complex nested layout: HBox with VBox inside
-				return HBoxNode{Gap: 1, Children: []any{
-					TextNode{Content: &item.Icon},
-					VBoxNode{Children: []any{
-						HBoxNode{Children: []any{
-							TextNode{Content: &item.Label},
-							SpacerNode{},
-							TextNode{Content: &item.Shortcut},
-						}},
-					}},
-				}}
+				return HBox.Gap(1)(
+					Text(&item.Icon),
+					VBox(
+						HBox(
+							Text(&item.Label),
+							Space(),
+							Text(&item.Shortcut),
+						),
+					),
+				)
 			},
 		}
 
-		tmpl := Build(VBoxNode{Children: []any{list}})
+		tmpl := Build(VBox(list))
 		buf := NewBuffer(40, 5)
 		tmpl.Execute(buf, 40, 5)
 
@@ -1695,13 +1671,13 @@ func TestComplexNestedLayouts(t *testing.T) {
 
 	t.Run("grow factors compete correctly", func(t *testing.T) {
 		// Two spacers with different grow factors
-		tmpl := Build(HBoxNode{Children: []any{
-			TextNode{Content: "A"},
-			SpacerNode{}.Grow(1),
-			TextNode{Content: "B"},
-			SpacerNode{}.Grow(2), // should get 2x the space
-			TextNode{Content: "C"},
-		}})
+		tmpl := Build(HBox(
+			Text("A"),
+			Space().Grow(1),
+			Text("B"),
+			Space().Grow(2), // should get 2x the space
+			Text("C"),
+		))
 
 		buf := NewBuffer(30, 1)
 		tmpl.Execute(buf, 30, 1)
@@ -1728,13 +1704,13 @@ func TestComplexNestedLayouts(t *testing.T) {
 		style1 := Style{FG: Red}
 		style2 := Style{FG: Green, Attr: AttrBold}
 
-		tmpl := Build(VBoxNode{Children: []any{
-			HBoxNode{Children: []any{
-				TextNode{Content: "Red", Style: style1},
-				SpacerNode{Width: 1},
-				TextNode{Content: "Green", Style: style2},
-			}},
-		}}.Border(BorderSingle))
+		tmpl := Build(VBox.Border(BorderSingle)(
+			HBox(
+				Text("Red").Style(style1),
+				SpaceW(1),
+				Text("Green").Style(style2),
+			),
+		))
 
 		buf := NewBuffer(20, 3)
 		tmpl.Execute(buf, 20, 3)
@@ -1761,9 +1737,9 @@ func TestComplexNestedLayouts(t *testing.T) {
 	})
 
 	t.Run("zero-width edge case", func(t *testing.T) {
-		tmpl := Build(HBoxNode{Children: []any{
-			TextNode{Content: "X"},
-		}})
+		tmpl := Build(HBox(
+			Text("X"),
+		))
 
 		// Execute with zero width - should not panic
 		buf := NewBuffer(0, 1)
@@ -1772,11 +1748,11 @@ func TestComplexNestedLayouts(t *testing.T) {
 	})
 
 	t.Run("very narrow container with nested content", func(t *testing.T) {
-		tmpl := Build(VBoxNode{Children: []any{
-			HBoxNode{Children: []any{
-				TextNode{Content: "TooLongText"},
-			}},
-		}}.Border(BorderSingle))
+		tmpl := Build(VBox.Border(BorderSingle)(
+			HBox(
+				Text("TooLongText"),
+			),
+		))
 
 		buf := NewBuffer(8, 3) // Very narrow - content will be clipped
 		tmpl.Execute(buf, 8, 3)
@@ -1793,11 +1769,11 @@ func TestComplexNestedLayouts(t *testing.T) {
 	})
 
 	t.Run("HRule inside bordered VBox", func(t *testing.T) {
-		tmpl := Build(VBoxNode{Children: []any{
-			TextNode{Content: "Header"},
-			HRuleNode{},
-			TextNode{Content: "Body"},
-		}}.Border(BorderSingle))
+		tmpl := Build(VBox.Border(BorderSingle)(
+			Text("Header"),
+			HRule(),
+			Text("Body"),
+		))
 
 		buf := NewBuffer(20, 5)
 		tmpl.Execute(buf, 20, 5)
@@ -1817,17 +1793,17 @@ func TestComplexNestedLayouts(t *testing.T) {
 
 	t.Run("deeply nested 5 levels", func(t *testing.T) {
 		tmpl := Build(
-			VBoxNode{Children: []any{
-				HBoxNode{Children: []any{
-					VBoxNode{Children: []any{
-						HBoxNode{Children: []any{
-							VBoxNode{Children: []any{
-								TextNode{Content: "DEEP"},
-							}},
-						}},
-					}},
-				}},
-			}},
+			VBox(
+				HBox(
+					VBox(
+						HBox(
+							VBox(
+								Text("DEEP"),
+							),
+						),
+					),
+				),
+			),
 		)
 
 		buf := NewBuffer(20, 5)
@@ -1853,16 +1829,12 @@ func TestHBoxWithLayerView(t *testing.T) {
 		layer.SetLineString(1, "Editor line 2", DefaultStyle())
 		layer.SetLineString(2, "Editor line 3", DefaultStyle())
 
-		tmpl := Build(HBoxNode{Children: []any{
-			VBoxNode{Children: []any{
-				TextNode{Content: "Sidebar"},
-			}}.Width(10),
-			LayerViewNode{
-				Layer:      layer,
-				ViewWidth:  30,
-				ViewHeight: 5,
-			},
-		}})
+		tmpl := Build(HBox(
+			VBox.Width(10)(
+				Text("Sidebar"),
+			),
+			LayerView(layer).ViewWidth(30).ViewHeight(5),
+		))
 
 		buf := NewBuffer(50, 6)
 		tmpl.Execute(buf, 50, 6)
@@ -1888,23 +1860,19 @@ func TestHBoxWithLayerView(t *testing.T) {
 			layer.SetLineString(i, fmt.Sprintf("Line %d of editor content", i+1), DefaultStyle())
 		}
 
-		tmpl := Build(HBoxNode{Gap: 1, Children: []any{
-			VBoxNode{Children: []any{
-				TextNode{Content: "Files", Style: Style{FG: Yellow}},
-				HRuleNode{},
-				TextNode{Content: "main.go"},
-				TextNode{Content: "utils.go"},
-			}}.Border(BorderSingle).Width(15),
-			VBoxNode{Children: []any{
-				TextNode{Content: "Editor", Style: Style{FG: Cyan}},
-				HRuleNode{},
-				LayerViewNode{
-					Layer:      layer,
-					ViewWidth:  0, // fill available
-					ViewHeight: 8,
-				},
-			}}.Border(BorderRounded).Grow(1),
-		}})
+		tmpl := Build(HBox.Gap(1)(
+			VBox.Border(BorderSingle).Width(15)(
+				Text("Files").FG(Yellow),
+				HRule(),
+				Text("main.go"),
+				Text("utils.go"),
+			),
+			VBox.Border(BorderRounded).Grow(1)(
+				Text("Editor").FG(Cyan),
+				HRule(),
+				LayerView(layer).ViewHeight(8),
+			),
+		))
 
 		buf := NewBuffer(60, 12)
 		tmpl.Execute(buf, 60, 12)
@@ -1958,24 +1926,20 @@ func TestHBoxWithLayerView(t *testing.T) {
 		}
 		selected := 0
 
-		tmpl := Build(HBoxNode{Children: []any{
-			VBoxNode{Children: []any{
-				TextNode{Content: "Browser"},
+		tmpl := Build(HBox(
+			VBox.Border(BorderSingle).Width(20)(
+				Text("Browser"),
 				&SelectionList{
 					Items:    &items,
 					Selected: &selected,
 					Marker:   "> ",
 					Render: func(item *FileItem) any {
-						return TextNode{Content: &item.Display}
+						return Text(&item.Display)
 					},
 				},
-			}}.Border(BorderSingle).Width(20),
-			LayerViewNode{
-				Layer:      layer,
-				ViewWidth:  40,
-				ViewHeight: 6,
-			}.Grow(1),
-		}})
+			),
+			LayerView(layer).ViewWidth(40).ViewHeight(6).Grow(1),
+		))
 
 		buf := NewBuffer(70, 10)
 		tmpl.Execute(buf, 70, 10)
@@ -2004,20 +1968,16 @@ func TestHBoxWithLayerView(t *testing.T) {
 
 		sidebarVisible := true
 
-		tmpl := Build(HBoxNode{Gap: 1, Children: []any{
+		tmpl := Build(HBox.Gap(1)(
 			// Sidebar - conditionally rendered
 			If(&sidebarVisible).Eq(true).Then(
-				VBoxNode{Children: []any{
-					TextNode{Content: "Sidebar"},
-				}}.Border(BorderSingle).Width(15),
+				VBox.Border(BorderSingle).Width(15)(
+					Text("Sidebar"),
+				),
 			),
 			// Editor always visible
-			LayerViewNode{
-				Layer:      layer,
-				ViewWidth:  40,
-				ViewHeight: 5,
-			}.Grow(1),
-		}})
+			LayerView(layer).ViewWidth(40).ViewHeight(5).Grow(1),
+		))
 
 		buf := NewBuffer(60, 6)
 
@@ -2085,34 +2045,30 @@ func TestHBoxWithLayerView(t *testing.T) {
 			Selected: &selected,
 			Marker:   "> ",
 			Render: func(item *FileItem) any {
-				return TextNode{Content: &item.Display}
+				return Text(&item.Display)
 			},
 		}
 
-		tmpl := Build(VBoxNode{Children: []any{
-			TextNode{Content: "Header"},
-			SpacerNode{Height: 1},
-			HBoxNode{Gap: 1, Children: []any{
+		tmpl := Build(VBox(
+			Text("Header"),
+			SpaceH(1),
+			HBox.Gap(1)(
 				// Sidebar with If conditional - THIS IS THE KEY DIFFERENCE
 				If(&sidebarVisible).Eq(true).Then(
-					VBoxNode{Children: []any{
-						TextNode{Content: "Files"},
-						HRuleNode{},
+					VBox.Border(BorderSingle).Width(25)(
+						Text("Files"),
+						HRule(),
 						sidebarList,
-					}}.Border(BorderSingle).Width(25),
+					),
 				),
 				// Editor with Grow(1)
-				VBoxNode{Children: []any{
-					TextNode{Content: "Editor"},
-					HRuleNode{},
-					LayerViewNode{
-						Layer:      layer,
-						ViewWidth:  0,
-						ViewHeight: 10,
-					},
-				}}.Border(BorderRounded).Grow(1),
-			}},
-		}})
+				VBox.Border(BorderRounded).Grow(1)(
+					Text("Editor"),
+					HRule(),
+					LayerView(layer).ViewHeight(10),
+				),
+			),
+		))
 
 		buf := NewBuffer(100, 20)
 		tmpl.Execute(buf, 100, 20)
@@ -2159,22 +2115,22 @@ func TestHBoxWithLayerView(t *testing.T) {
 		// Test that If is truly transparent - Grow inside If should work same as Grow without If
 
 		// WITHOUT If wrapper
-		tmplWithout := Build(HBoxNode{Children: []any{
-			VBoxNode{Children: []any{TextNode{Content: "Left"}}}.Border(BorderSingle).Width(20),
-			VBoxNode{Children: []any{TextNode{Content: "Right"}}}.Border(BorderSingle).Grow(1),
-		}})
+		tmplWithout := Build(HBox(
+			VBox.Border(BorderSingle).Width(20)(Text("Left")),
+			VBox.Border(BorderSingle).Grow(1)(Text("Right")),
+		))
 
 		bufWithout := NewBuffer(60, 5)
 		tmplWithout.Execute(bufWithout, 60, 5)
 
 		// WITH If wrapper (condition true)
 		visible := true
-		tmplWith := Build(HBoxNode{Children: []any{
+		tmplWith := Build(HBox(
 			If(&visible).Eq(true).Then(
-				VBoxNode{Children: []any{TextNode{Content: "Left"}}}.Border(BorderSingle).Width(20),
+				VBox.Border(BorderSingle).Width(20)(Text("Left")),
 			),
-			VBoxNode{Children: []any{TextNode{Content: "Right"}}}.Border(BorderSingle).Grow(1),
-		}})
+			VBox.Border(BorderSingle).Grow(1)(Text("Right")),
+		))
 
 		bufWith := NewBuffer(60, 5)
 		tmplWith.Execute(bufWith, 60, 5)
@@ -2200,12 +2156,12 @@ func TestHBoxWithLayerView(t *testing.T) {
 	t.Run("If with Grow content - both sides flex", func(t *testing.T) {
 		// Both sides have Grow - should split evenly
 		visible := true
-		tmpl := Build(HBoxNode{Children: []any{
+		tmpl := Build(HBox(
 			If(&visible).Eq(true).Then(
-				VBoxNode{Children: []any{TextNode{Content: "A"}}}.Border(BorderSingle).Grow(1),
+				VBox.Border(BorderSingle).Grow(1)(Text("A")),
 			),
-			VBoxNode{Children: []any{TextNode{Content: "B"}}}.Border(BorderSingle).Grow(1),
-		}})
+			VBox.Border(BorderSingle).Grow(1)(Text("B")),
+		))
 
 		buf := NewBuffer(60, 5)
 		tmpl.Execute(buf, 60, 5)
@@ -2247,11 +2203,11 @@ func TestGapWithInvisibleIf(t *testing.T) {
 	// Test: gaps should only appear between visible children
 	visible := true
 
-	tmpl := Build(HBoxNode{Gap: 2, Children: []any{
-		TextNode{Content: "A"},
-		If(&visible).Eq(true).Then(TextNode{Content: "B"}),
-		TextNode{Content: "C"},
-	}})
+	tmpl := Build(HBox.Gap(2)(
+		Text("A"),
+		If(&visible).Eq(true).Then(Text("B")),
+		Text("C"),
+	))
 
 	buf := NewBuffer(20, 1)
 
@@ -2284,13 +2240,13 @@ func TestGapWithMultipleIfsAtEnd(t *testing.T) {
 	if1Visible := true
 	if2Visible := true
 
-	tmpl := Build(HBoxNode{Gap: 1, Children: []any{
-		TextNode{Content: "A"},
-		TextNode{Content: "B"},
-		TextNode{Content: "C"},
-		If(&if1Visible).Eq(true).Then(TextNode{Content: "D"}),
-		If(&if2Visible).Eq(true).Then(TextNode{Content: "E"}),
-	}})
+	tmpl := Build(HBox.Gap(1)(
+		Text("A"),
+		Text("B"),
+		Text("C"),
+		If(&if1Visible).Eq(true).Then(Text("D")),
+		If(&if2Visible).Eq(true).Then(Text("E")),
+	))
 
 	buf := NewBuffer(20, 1)
 
@@ -2351,12 +2307,12 @@ func TestSwitchWithHBoxChildren(t *testing.T) {
 	// First test: just Switch with simple Text - only child (string type like working test)
 	t.Run("switch string type", func(t *testing.T) {
 		tab := "home"
-		tmpl := Build(VBoxNode{Children: []any{
+		tmpl := Build(VBox(
 			Switch(&tab).
-				Case("home", TextNode{Content: "HOME_CONTENT"}).
-				Case("settings", TextNode{Content: "SETTINGS_CONTENT"}).
-				Default(TextNode{Content: "DEFAULT_CONTENT"}),
-		}})
+				Case("home", Text("HOME_CONTENT")).
+				Case("settings", Text("SETTINGS_CONTENT")).
+				Default(Text("DEFAULT_CONTENT")),
+		))
 
 		buf := NewBuffer(60, 5)
 		tmpl.Execute(buf, 60, 5)
@@ -2369,12 +2325,12 @@ func TestSwitchWithHBoxChildren(t *testing.T) {
 
 	// Second test: int type (my original test)
 	t.Run("switch int type", func(t *testing.T) {
-		tmpl := Build(VBoxNode{Children: []any{
+		tmpl := Build(VBox(
 			Switch(&currentDemo).
-				Case(0, TextNode{Content: "Demo 0 content"}).
-				Case(1, TextNode{Content: "Demo 1 content"}).
-				Default(TextNode{Content: "Default content"}),
-		}})
+				Case(0, Text("Demo 0 content")).
+				Case(1, Text("Demo 1 content")).
+				Default(Text("Default content")),
+		))
 
 		buf := NewBuffer(60, 5)
 		tmpl.Execute(buf, 60, 5)
@@ -2387,13 +2343,13 @@ func TestSwitchWithHBoxChildren(t *testing.T) {
 
 	// Second test: Switch with Header before it
 	t.Run("switch with header before", func(t *testing.T) {
-		tmpl := Build(VBoxNode{Children: []any{
-			TextNode{Content: "Header"},
+		tmpl := Build(VBox(
+			Text("Header"),
 			Switch(&currentDemo).
-				Case(0, TextNode{Content: "Demo 0 content"}).
-				Case(1, TextNode{Content: "Demo 1 content"}).
-				Default(TextNode{Content: "Default"}),
-		}})
+				Case(0, Text("Demo 0 content")).
+				Case(1, Text("Demo 1 content")).
+				Default(Text("Default")),
+		))
 
 		buf := NewBuffer(60, 5)
 		tmpl.Execute(buf, 60, 5)
@@ -2411,17 +2367,17 @@ func TestSwitchWithHBoxChildren(t *testing.T) {
 
 	// Second test: Switch with HBox
 	t.Run("switch with HBox", func(t *testing.T) {
-		tmpl := Build(VBoxNode{Children: []any{
-			TextNode{Content: "Header"},
+		tmpl := Build(VBox(
+			Text("Header"),
 			Switch(&currentDemo).
-				Case(0, HBoxNode{Gap: 1, Children: []any{
-					TextNode{Content: "A"},
-					TextNode{Content: "B"},
-					TextNode{Content: "C"},
-				}}).
-				Case(1, TextNode{Content: "Demo 1"}).
-				Default(TextNode{Content: "Default"}),
-		}})
+				Case(0, HBox.Gap(1)(
+					Text("A"),
+					Text("B"),
+					Text("C"),
+				)).
+				Case(1, Text("Demo 1")).
+				Default(Text("Default")),
+		))
 
 		buf := NewBuffer(60, 5)
 		tmpl.Execute(buf, 60, 5)
@@ -2436,16 +2392,16 @@ func TestSwitchWithHBoxChildren(t *testing.T) {
 
 	// Third test: Switch with bordered VBox
 	t.Run("switch with bordered VBox", func(t *testing.T) {
-		tmpl := Build(VBoxNode{Children: []any{
-			TextNode{Content: "Header"},
+		tmpl := Build(VBox(
+			Text("Header"),
 			Switch(&currentDemo).
-				Case(0, VBoxNode{Children: []any{
-					TextNode{Content: "Col A"},
-					TextNode{Content: "A1"},
-				}}.Border(BorderSingle)).
-				Case(1, TextNode{Content: "Demo 1"}).
-				Default(TextNode{Content: "Default"}),
-		}})
+				Case(0, VBox.Border(BorderSingle)(
+					Text("Col A"),
+					Text("A1"),
+				)).
+				Case(1, Text("Demo 1")).
+				Default(Text("Default")),
+		))
 
 		buf := NewBuffer(60, 10)
 		tmpl.Execute(buf, 60, 10)
@@ -2455,28 +2411,28 @@ func TestSwitchWithHBoxChildren(t *testing.T) {
 	})
 
 	// Full test: Switch with HBox containing bordered VBoxes
-	tmpl := Build(VBoxNode{Children: []any{
-		TextNode{Content: "Header"},
+	tmpl := Build(VBox(
+		Text("Header"),
 		Switch(&currentDemo).
 			Case(0,
-				HBoxNode{Gap: 3, Children: []any{
-					VBoxNode{Children: []any{
-						TextNode{Content: "Col A"},
-						TextNode{Content: "A1"},
-						TextNode{Content: "A2"},
-					}}.Border(BorderSingle),
-					VBoxNode{Children: []any{
-						TextNode{Content: "Col B"},
-						TextNode{Content: "B1"},
-					}}.Border(BorderSingle),
-					VBoxNode{Children: []any{
-						TextNode{Content: "Col C"},
-						TextNode{Content: "C1"},
-					}}.Border(BorderSingle),
-				}}).
-			Case(1, TextNode{Content: "Demo 2"}).
-			Default(TextNode{Content: "Unknown demo"}),
-	}})
+				HBox.Gap(3)(
+					VBox.Border(BorderSingle)(
+						Text("Col A"),
+						Text("A1"),
+						Text("A2"),
+					),
+					VBox.Border(BorderSingle)(
+						Text("Col B"),
+						Text("B1"),
+					),
+					VBox.Border(BorderSingle)(
+						Text("Col C"),
+						Text("C1"),
+					),
+				)).
+			Case(1, Text("Demo 2")).
+			Default(Text("Unknown demo")),
+	))
 
 	buf := NewBuffer(60, 10)
 
@@ -2520,20 +2476,20 @@ func TestIfWithFixedWidthSidebar(t *testing.T) {
 
 	// Build: HBox containing conditional sidebar + main content
 	// The sidebar is wrapped in a VBox (like wed's structure)
-	tmpl := Build(HBoxNode{Children: []any{
+	tmpl := Build(HBox(
 		// Conditional sidebar wrapper
 		If(&sidebarVisible).Eq(true).Then(
-			VBoxNode{Children: []any{
-				VBoxNode{Children: []any{
-					TextNode{Content: "Sidebar"},
-				}}.Width(sidebarWidth),
-			}},
+			VBox(
+				VBox.Width(sidebarWidth)(
+					Text("Sidebar"),
+				),
+			),
 		),
 		// Main content with Grow(1)
-		VBoxNode{Children: []any{
-			TextNode{Content: "MAIN_CONTENT"},
-		}}.Grow(1),
-	}})
+		VBox.Grow(1)(
+			Text("MAIN_CONTENT"),
+		),
+	))
 
 	buf := NewBuffer(50, 3)
 
@@ -2583,13 +2539,10 @@ func TestStyleInheritance(t *testing.T) {
 	accentStyle := Style{FG: Green}
 
 	t.Run("children inherit parent style", func(t *testing.T) {
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &baseStyle,
-			Children: []any{
-				TextNode{Content: "Inherited"},
-				TextNode{Content: "Also inherited"},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&baseStyle)(
+				Text("Inherited"),
+				Text("Also inherited"),
+			))
 
 		buf := NewBuffer(20, 3)
 		tmpl.Execute(buf, 20, 3)
@@ -2605,12 +2558,9 @@ func TestStyleInheritance(t *testing.T) {
 	})
 
 	t.Run("explicit style overrides inherited", func(t *testing.T) {
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &baseStyle,
-			Children: []any{
-				TextNode{Content: "Override", Style: accentStyle},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&baseStyle)(
+				Text("Override").Style(accentStyle),
+			))
 
 		buf := NewBuffer(20, 3)
 		tmpl.Execute(buf, 20, 3)
@@ -2624,19 +2574,13 @@ func TestStyleInheritance(t *testing.T) {
 	t.Run("nested containers can override inherited style", func(t *testing.T) {
 		nestedStyle := Style{FG: Yellow}
 
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &baseStyle,
-			Children: []any{
-				TextNode{Content: "Uses base"},
-				VBoxNode{
-					CascadeStyle: &nestedStyle,
-					Children: []any{
-						TextNode{Content: "Uses nested"},
-					},
-				},
-				TextNode{Content: "Back to base"},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&baseStyle)(
+				Text("Uses base"),
+				VBox.CascadeStyle(&nestedStyle)(
+						Text("Uses nested"),
+					),
+				Text("Back to base"),
+			))
 
 		buf := NewBuffer(20, 5)
 		tmpl.Execute(buf, 20, 5)
@@ -2663,14 +2607,11 @@ func TestStyleInheritance(t *testing.T) {
 	t.Run("style inheritance works through If", func(t *testing.T) {
 		visible := true
 
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &baseStyle,
-			Children: []any{
+		tmpl := Build(VBox.CascadeStyle(&baseStyle)(
 				If(&visible).Eq(true).Then(
-					TextNode{Content: "Conditional"},
+					Text("Conditional"),
 				),
-			},
-		})
+			))
 
 		buf := NewBuffer(20, 3)
 		tmpl.Execute(buf, 20, 3)
@@ -2684,12 +2625,9 @@ func TestStyleInheritance(t *testing.T) {
 	t.Run("dynamic theme switching", func(t *testing.T) {
 		theme := Style{FG: Cyan}
 
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &theme,
-			Children: []any{
-				TextNode{Content: "Themed"},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&theme)(
+				Text("Themed"),
+			))
 
 		buf := NewBuffer(20, 3)
 
@@ -2717,12 +2655,9 @@ func TestContainerFill(t *testing.T) {
 	t.Run("container fills area with Fill color", func(t *testing.T) {
 		fillStyle := Style{Fill: Red}
 
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &fillStyle,
-			Children: []any{
-				TextNode{Content: "Hi"},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&fillStyle)(
+				Text("Hi"),
+			))
 
 		buf := NewBuffer(10, 3)
 		tmpl.Execute(buf, 10, 3)
@@ -2745,18 +2680,12 @@ func TestContainerFill(t *testing.T) {
 		outerFill := Style{Fill: Blue}
 		innerFill := Style{Fill: Green}
 
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &outerFill,
-			Children: []any{
-				TextNode{Content: "Outer"},
-				HBoxNode{
-					CascadeStyle: &innerFill,
-					Children: []any{
-						TextNode{Content: "In"},
-					},
-				}.Width(5).Height(1),
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&outerFill)(
+				Text("Outer"),
+				HBox.CascadeStyle(&innerFill).Width(5).Height(1)(
+						Text("In"),
+					),
+			))
 
 		buf := NewBuffer(10, 3)
 		tmpl.Execute(buf, 10, 3)
@@ -2777,11 +2706,9 @@ func TestContainerFill(t *testing.T) {
 	t.Run("fill does not affect containers without CascadeStyle", func(t *testing.T) {
 		buf := NewBuffer(10, 3)
 
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				TextNode{Content: "No fill"},
-			},
-		})
+		tmpl := Build(VBox(
+				Text("No fill"),
+			))
 		tmpl.Execute(buf, 10, 3)
 
 		// Should have default (no fill)
@@ -2796,18 +2723,12 @@ func TestContainerFill(t *testing.T) {
 		rootStyle := Style{FG: White, Fill: Blue}
 		nestedStyle := Style{FG: Yellow} // no Fill - should inherit parent's Fill
 
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &rootStyle,
-			Children: []any{
-				TextNode{Content: "Root"},
-				VBoxNode{
-					CascadeStyle: &nestedStyle,
-					Children: []any{
-						TextNode{Content: "Nested"},
-					},
-				},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&rootStyle)(
+				Text("Root"),
+				VBox.CascadeStyle(&nestedStyle)(
+						Text("Nested"),
+					),
+			))
 
 		buf := NewBuffer(10, 3)
 		tmpl.Execute(buf, 10, 3)
@@ -2835,12 +2756,9 @@ func TestContainerFill(t *testing.T) {
 func TestTextTransform(t *testing.T) {
 	t.Run("uppercase transform", func(t *testing.T) {
 		style := Style{Transform: TransformUppercase}
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &style,
-			Children: []any{
-				TextNode{Content: "hello world"},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&style)(
+				Text("hello world"),
+			))
 
 		buf := NewBuffer(20, 1)
 		tmpl.Execute(buf, 20, 1)
@@ -2853,12 +2771,9 @@ func TestTextTransform(t *testing.T) {
 
 	t.Run("lowercase transform", func(t *testing.T) {
 		style := Style{Transform: TransformLowercase}
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &style,
-			Children: []any{
-				TextNode{Content: "HELLO WORLD"},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&style)(
+				Text("HELLO WORLD"),
+			))
 
 		buf := NewBuffer(20, 1)
 		tmpl.Execute(buf, 20, 1)
@@ -2871,17 +2786,12 @@ func TestTextTransform(t *testing.T) {
 
 	t.Run("transform cascades to children", func(t *testing.T) {
 		style := Style{Transform: TransformUppercase}
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &style,
-			Children: []any{
-				TextNode{Content: "parent"},
-				VBoxNode{
-					Children: []any{
-						TextNode{Content: "child"},
-					},
-				},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&style)(
+				Text("parent"),
+				VBox(
+						Text("child"),
+					),
+			))
 
 		buf := NewBuffer(20, 2)
 		tmpl.Execute(buf, 20, 2)
@@ -2903,12 +2813,9 @@ func TestAttrInheritance(t *testing.T) {
 		parentStyle := Style{Attr: AttrBold}
 		childStyle := Style{FG: Red} // has FG but not Attr
 
-		tmpl := Build(VBoxNode{
-			CascadeStyle: &parentStyle,
-			Children: []any{
-				TextNode{Content: "X", Style: childStyle},
-			},
-		})
+		tmpl := Build(VBox.CascadeStyle(&parentStyle)(
+				Text("X").Style(childStyle),
+			))
 
 		buf := NewBuffer(5, 1)
 		tmpl.Execute(buf, 5, 1)
@@ -4368,19 +4275,19 @@ func TestV2SplitLayout(t *testing.T) {
 	spans1 := []Span{{Text: "Status 1"}}
 	spans2 := []Span{{Text: "Status 2"}}
 
-	view := VBoxNode{Children: []any{
-		HBoxNode{Children: []any{
-			VBoxNode{Children: []any{
-				LayerViewNode{Layer: layer1, ViewHeight: 5},
+	view := VBox(
+		HBox(
+			VBox(
+				LayerView(layer1).ViewHeight(5),
 				RichTextNode{Spans: spans1},
-			}},
-			VBoxNode{Children: []any{
-				LayerViewNode{Layer: layer2, ViewHeight: 5},
+			),
+			VBox(
+				LayerView(layer2).ViewHeight(5),
 				RichTextNode{Spans: spans2},
-			}},
-		}},
-		TextNode{Content: "Global status"},
-	}}
+			),
+		),
+		Text("Global status"),
+	)
 
 	tmpl := Build(view)
 	screen := NewBuffer(80, 20)
@@ -4419,14 +4326,12 @@ func TestSimpleForEach(t *testing.T) {
 		items[i] = StressItem{CPU: float32(i) / 10.0}
 	}
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: "Simple ForEach"},
+	ui := VBox(
+			Text("Simple ForEach"),
 			ForEach(&items, func(item *StressItem) any {
-				return ProgressNode{Value: &item.CPU, BarWidth: 8}
+				return Progress(&item.CPU).Width(8)
 			}),
-		},
-	}
+		)
 
 	serial := Build(ui)
 	buf := NewBuffer(100, 50)
@@ -4456,18 +4361,16 @@ func TestNestedForEach(t *testing.T) {
 		}
 	}
 
-	ui := VBoxNode{
-		Children: []any{
-			TextNode{Content: "Dense Grid"},
+	ui := VBox(
+			Text("Dense Grid"),
 			ForEach(&rows, func(row *[]StressItem) any {
-				return HBoxNode{Children: []any{
+				return HBox(
 					ForEach(row, func(item *StressItem) any {
-						return ProgressNode{Value: &item.CPU, BarWidth: 8}
+						return Progress(&item.CPU).Width(8)
 					}),
-				}}
+				)
 			}),
-		},
-	}
+		)
 
 	serial := Build(ui)
 	buf.Clear()

@@ -98,10 +98,10 @@ func TestConditionInSerialTemplate(t *testing.T) {
 	t.Run("If renders correct branch", func(t *testing.T) {
 		activeLayer := 0
 
-		view := VBoxNode{Children: []any{
-			IfOrd(&activeLayer).Eq(0).Then(TextNode{Content: "LAYER0"}).Else(TextNode{Content: "OTHER"}),
-			IfOrd(&activeLayer).Eq(1).Then(TextNode{Content: "LAYER1"}).Else(TextNode{Content: "OTHER"}),
-		}}
+		view := VBox(
+			IfOrd(&activeLayer).Eq(0).Then(Text("LAYER0")).Else(Text("OTHER")),
+			IfOrd(&activeLayer).Eq(1).Then(Text("LAYER1")).Else(Text("OTHER")),
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -232,12 +232,12 @@ func TestSwitchInSerialTemplate(t *testing.T) {
 	t.Run("Switch renders correct case", func(t *testing.T) {
 		tab := "home"
 
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			Switch(&tab).
-				Case("home", TextNode{Content: "HOME_CONTENT"}).
-				Case("settings", TextNode{Content: "SETTINGS_CONTENT"}).
-				Default(TextNode{Content: "DEFAULT_CONTENT"}),
-		}}
+				Case("home", Text("HOME_CONTENT")).
+				Case("settings", Text("SETTINGS_CONTENT")).
+				Default(Text("DEFAULT_CONTENT")),
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -283,11 +283,11 @@ func TestSelectionList(t *testing.T) {
 			Items:    &items,
 			Selected: &selected,
 			Render: func(item *Item) any {
-				return TextNode{Content: &item.Name}
+				return Text(&item.Name)
 			},
 		}
 
-		view := VBoxNode{Children: []any{list}}
+		view := VBox(list)
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
 		tmpl.Execute(buf, 20, 10)
@@ -318,11 +318,11 @@ func TestSelectionList(t *testing.T) {
 			Items:    &items,
 			Selected: &selected,
 			Render: func(item *Item) any {
-				return TextNode{Content: &item.Name}
+				return Text(&item.Name)
 			},
 		}
 
-		view := VBoxNode{Children: []any{list}}
+		view := VBox(list)
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
 		tmpl.Execute(buf, 20, 10)
@@ -360,11 +360,11 @@ func TestSelectionList(t *testing.T) {
 			Selected: &selected,
 			Marker:   "→ ",
 			Render: func(item *Item) any {
-				return TextNode{Content: &item.Name}
+				return Text(&item.Name)
 			},
 		}
 
-		view := VBoxNode{Children: []any{list}}
+		view := VBox(list)
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
 		tmpl.Execute(buf, 20, 10)
@@ -385,12 +385,12 @@ func TestSelectionList(t *testing.T) {
 			Items:    &items,
 			Selected: &selected,
 			Render: func(item *Item) any {
-				return TextNode{Content: &item.Name}
+				return Text(&item.Name)
 			},
 		}
 
 		// Need to render once to populate len
-		view := VBoxNode{Children: []any{list}}
+		view := VBox(list)
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
 		tmpl.Execute(buf, 20, 10)
@@ -448,11 +448,11 @@ func TestSelectionList(t *testing.T) {
 			Selected:   &selected,
 			MaxVisible: 3, // Only show 3 items at a time
 			Render: func(item *Item) any {
-				return TextNode{Content: &item.Name}
+				return Text(&item.Name)
 			},
 		}
 
-		view := VBoxNode{Children: []any{list}}
+		view := VBox(list)
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
 		tmpl.Execute(buf, 20, 10)
@@ -486,11 +486,11 @@ func TestSelectionList(t *testing.T) {
 			Selected:   &selected,
 			MaxVisible: 3,
 			Render: func(item *Item) any {
-				return TextNode{Content: &item.Name}
+				return Text(&item.Name)
 			},
 		}
 
-		view := VBoxNode{Children: []any{list}}
+		view := VBox(list)
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
 		tmpl.Execute(buf, 20, 10)
@@ -528,11 +528,11 @@ func TestSelectionList(t *testing.T) {
 			Selected:   &selected,
 			MaxVisible: 3,
 			Render: func(item *Item) any {
-				return TextNode{Content: &item.Name}
+				return Text(&item.Name)
 			},
 		}
 
-		view := VBoxNode{Children: []any{list}}
+		view := VBox(list)
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
 		tmpl.Execute(buf, 20, 10)
@@ -569,14 +569,13 @@ func TestConditionInsideForEach(t *testing.T) {
 			{Name: "Gamma", Selected: false},
 		}
 
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			ForEach(&items, func(item *Item) any {
-				// Use If to conditionally style each item based on its Selected field
 				return If(&item.Selected).Eq(true).
-					Then(TextNode{Content: &item.Name, Style: Style{Attr: AttrBold}}).
-					Else(TextNode{Content: &item.Name})
+					Then(Text(&item.Name).Bold()).
+					Else(Text(&item.Name))
 			}),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
@@ -624,14 +623,13 @@ func TestConditionInsideForEach(t *testing.T) {
 			{Text: "Active", IsActive: true},
 		}
 
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			ForEach(&items, func(item *Item) any {
-				// Both branches use Text with same pointer, just different styles
 				return If(&item.IsActive).Eq(true).
-					Then(TextNode{Content: &item.Text, Style: Style{Attr: AttrBold}}).
-					Else(TextNode{Content: &item.Text, Style: Style{Attr: AttrDim}})
+					Then(Text(&item.Text).Bold()).
+					Else(Text(&item.Text).Dim())
 			}),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
@@ -668,11 +666,11 @@ func TestConditionInsideForEach(t *testing.T) {
 
 func TestHBoxLayout(t *testing.T) {
 	t.Run("HBox places children horizontally", func(t *testing.T) {
-		view := HBoxNode{Children: []any{
-			TextNode{Content: "AAA"},
-			TextNode{Content: "BBB"},
-			TextNode{Content: "CCC"},
-		}}
+		view := HBox(
+			Text("AAA"),
+			Text("BBB"),
+			Text("CCC"),
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -686,10 +684,10 @@ func TestHBoxLayout(t *testing.T) {
 	})
 
 	t.Run("HBox with gap", func(t *testing.T) {
-		view := HBoxNode{Gap: 2, Children: []any{
-			TextNode{Content: "AA"},
-			TextNode{Content: "BB"},
-		}}
+		view := HBox.Gap(2)(
+			Text("AA"),
+			Text("BB"),
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -703,10 +701,10 @@ func TestHBoxLayout(t *testing.T) {
 	})
 
 	t.Run("VBox places children vertically", func(t *testing.T) {
-		view := VBoxNode{Children: []any{
-			TextNode{Content: "AAA"},
-			TextNode{Content: "BBB"},
-		}}
+		view := VBox(
+			Text("AAA"),
+			Text("BBB"),
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -723,13 +721,13 @@ func TestHBoxLayout(t *testing.T) {
 	})
 
 	t.Run("Nested HBox in VBox", func(t *testing.T) {
-		view := VBoxNode{Children: []any{
-			HBoxNode{Children: []any{
-				TextNode{Content: "A"},
-				TextNode{Content: "B"},
-			}},
-			TextNode{Content: "C"},
-		}}
+		view := VBox(
+			HBox(
+				Text("A"),
+				Text("B"),
+			),
+			Text("C"),
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -758,14 +756,14 @@ func TestRichTextInsideForEach(t *testing.T) {
 			{LineNum: "3 ", Spans: []Span{{Text: "Test"}}},
 		}
 
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			ForEach(&lines, func(dl *DisplayLine) any {
-				return HBoxNode{Children: []any{
-					TextNode{Content: &dl.LineNum},
+				return HBox(
+					Text(&dl.LineNum),
 					RichTextNode{Spans: &dl.Spans},
-				}}
+				)
 			}),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
@@ -796,11 +794,11 @@ func TestRichTextInsideForEach(t *testing.T) {
 			{Spans: []Span{{Text: "BBB"}}},
 		}
 
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			ForEach(&lines, func(l *Line) any {
 				return RichTextNode{Spans: &l.Spans}
 			}),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
@@ -843,11 +841,11 @@ func TestRichTextInsideForEach(t *testing.T) {
 			}},
 		}
 
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			ForEach(&lines, func(dl *DisplayLine) any {
 				return RichTextNode{Spans: &dl.Spans}
 			}),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 10)
@@ -863,9 +861,9 @@ func TestRichTextInsideForEach(t *testing.T) {
 
 func TestTextf(t *testing.T) {
 	t.Run("static strings compose into single line", func(t *testing.T) {
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			Textf("hello ", "world"),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -878,9 +876,9 @@ func TestTextf(t *testing.T) {
 	})
 
 	t.Run("styled spans via helpers", func(t *testing.T) {
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			Textf("normal ", Bold("bold")),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -899,9 +897,9 @@ func TestTextf(t *testing.T) {
 
 	t.Run("dynamic *string updates on re-render", func(t *testing.T) {
 		name := "Alice"
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			Textf("hi ", &name),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -932,11 +930,11 @@ func TestTextf(t *testing.T) {
 			{Label: "test", Status: "fail"},
 		}
 
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			ForEach(&items, func(it *Item) any {
 				return Textf(&it.Label, " -> ", &it.Status)
 			}),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)
@@ -967,11 +965,11 @@ func TestTextf(t *testing.T) {
 		}
 		rows := []Row{{Name: "pete"}}
 
-		view := VBoxNode{Children: []any{
+		view := VBox(
 			ForEach(&rows, func(r *Row) any {
 				return Textf("user: ", Text(&r.Name).Bold())
 			}),
-		}}
+		)
 
 		tmpl := Build(view)
 		buf := NewBuffer(20, 5)

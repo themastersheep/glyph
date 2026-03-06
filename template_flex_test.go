@@ -7,12 +7,10 @@ import (
 
 func TestSerialFlexPercentWidth(t *testing.T) {
 	// Test that PercentWidth distributes space correctly in a Row
-	tmpl := Build(HBoxNode{
-		Children: []any{
-			VBoxNode{Children: []any{TextNode{Content: "Left"}}}.WidthPct(0.5),
-			VBoxNode{Children: []any{TextNode{Content: "Right"}}}.WidthPct(0.5),
-		},
-	})
+	tmpl := Build(HBox(
+		VBox.WidthPct(0.5)(Text("Left")),
+		VBox.WidthPct(0.5)(Text("Right")),
+	))
 
 	buf := NewBuffer(40, 10)
 	tmpl.Execute(buf, 40, 10)
@@ -32,12 +30,10 @@ func TestSerialFlexPercentWidth(t *testing.T) {
 
 func TestSerialFlexGrow(t *testing.T) {
 	// Test that FlexGrow distributes remaining space
-	tmpl := Build(VBoxNode{
-		Children: []any{
-			TextNode{Content: "Header"}, // H=1
-			VBoxNode{Children: []any{TextNode{Content: "Content"}}}.Grow(1),
-		},
-	})
+	tmpl := Build(VBox(
+		Text("Header"), // H=1
+		VBox.Grow(1)(Text("Content")),
+	))
 
 	buf := NewBuffer(40, 20)
 	tmpl.Execute(buf, 40, 20)
@@ -57,12 +53,7 @@ func TestSerialFlexGrow(t *testing.T) {
 
 func TestSerialFlexBorder(t *testing.T) {
 	// Test that borders are drawn correctly
-	tmpl := Build(VBoxNode{
-		Title: "Panel",
-		Children: []any{
-			TextNode{Content: "Inside"},
-		},
-	}.Border(BorderSingle))
+	tmpl := Build(VBox.Border(BorderSingle).Title("Panel")(Text("Inside")))
 
 	buf := NewBuffer(30, 5)
 	tmpl.Execute(buf, 30, 5)
@@ -83,12 +74,10 @@ func TestSerialFlexBorder(t *testing.T) {
 
 func TestSerialFlexExplicitHeight(t *testing.T) {
 	// Test explicit height is respected
-	tmpl := Build(VBoxNode{
-		Children: []any{
-			TextNode{Content: "Line 1"},
-			TextNode{Content: "Line 2"},
-		},
-	}.Height(5))
+	tmpl := Build(VBox.Height(5)(
+		Text("Line 1"),
+		Text("Line 2"),
+	))
 
 	buf := NewBuffer(40, 20)
 	tmpl.Execute(buf, 40, 20)
@@ -103,26 +92,13 @@ func TestSerialFlexExplicitHeight(t *testing.T) {
 
 func TestSerialFlexCombined(t *testing.T) {
 	// Test combining PercentWidth, FlexGrow, and Border
-	tmpl := Build(VBoxNode{
-		Children: []any{
-			HBoxNode{
-				Children: []any{
-					VBoxNode{
-						Title:    "Left",
-						Children: []any{TextNode{Content: "L1"}},
-					}.WidthPct(0.5).Border(BorderSingle),
-					VBoxNode{
-						Title:    "Right",
-						Children: []any{TextNode{Content: "R1"}},
-					}.WidthPct(0.5).Border(BorderSingle),
-				},
-			},
-			VBoxNode{
-				Title:    "Log",
-				Children: []any{TextNode{Content: "Log entry"}},
-			}.Grow(1).Border(BorderSingle),
-		},
-	})
+	tmpl := Build(VBox(
+		HBox(
+			VBox.WidthPct(0.5).Border(BorderSingle).Title("Left")(Text("L1")),
+			VBox.WidthPct(0.5).Border(BorderSingle).Title("Right")(Text("R1")),
+		),
+		VBox.Grow(1).Border(BorderSingle).Title("Log")(Text("Log entry")),
+	))
 
 	buf := NewBuffer(60, 20)
 	tmpl.Execute(buf, 60, 20)
@@ -147,16 +123,12 @@ func TestSerialFlexWithPointerBindings(t *testing.T) {
 	status := "OK"
 	level := 75
 
-	tmpl := Build(VBoxNode{
-		Children: []any{
-			HBoxNode{
-				Children: []any{
-					VBoxNode{Children: []any{TextNode{Content: &status}}}.WidthPct(0.5),
-					VBoxNode{Children: []any{ProgressNode{Value: &level, BarWidth: 10}}}.WidthPct(0.5),
-				},
-			},
-		},
-	})
+	tmpl := Build(VBox(
+		HBox(
+			VBox.WidthPct(0.5)(Text(&status)),
+			VBox.WidthPct(0.5)(Progress(&level).Width(10)),
+		),
+	))
 
 	buf := NewBuffer(40, 5)
 
@@ -185,12 +157,10 @@ func TestSerialFlexWithPointerBindings(t *testing.T) {
 
 func TestLeaderComponent(t *testing.T) {
 	t.Run("static leader renders correctly", func(t *testing.T) {
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				LeaderNode{Label: "CPU", Value: "75%", Width: 20},
-				LeaderNode{Label: "MEM", Value: "4.2GB", Width: 20},
-			},
-		})
+		tmpl := Build(VBox(
+			Leader("CPU", "75%").Width(20),
+			Leader("MEM", "4.2GB").Width(20),
+		))
 
 		buf := NewBuffer(40, 5)
 		tmpl.Execute(buf, 40, 5)
@@ -212,11 +182,9 @@ func TestLeaderComponent(t *testing.T) {
 
 	t.Run("pointer binding updates dynamically", func(t *testing.T) {
 		value := "PASS"
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				LeaderNode{Label: "STATUS", Value: &value, Width: 25},
-			},
-		})
+		tmpl := Build(VBox(
+			Leader("STATUS", &value).Width(25),
+		))
 
 		buf := NewBuffer(40, 5)
 		tmpl.Execute(buf, 40, 5)
@@ -245,11 +213,9 @@ func TestLeaderComponent(t *testing.T) {
 	})
 
 	t.Run("custom fill character", func(t *testing.T) {
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				LeaderNode{Label: "ITEM", Value: "OK", Width: 15, Fill: '-'},
-			},
-		})
+		tmpl := Build(VBox(
+			Leader("ITEM", "OK").Width(15).Fill('-'),
+		))
 
 		buf := NewBuffer(40, 5)
 		tmpl.Execute(buf, 40, 5)
@@ -263,13 +229,10 @@ func TestLeaderComponent(t *testing.T) {
 	})
 
 	t.Run("leader in bordered panel", func(t *testing.T) {
-		tmpl := Build(VBoxNode{
-			Title: "STATUS",
-			Children: []any{
-				LeaderNode{Label: "RAM", Value: "PASS", Width: 20},
-				LeaderNode{Label: "CPU", Value: "OK", Width: 20},
-			},
-		}.Border(BorderSingle))
+		tmpl := Build(VBox.Border(BorderSingle).Title("STATUS")(
+			Leader("RAM", "PASS").Width(20),
+			Leader("CPU", "OK").Width(20),
+		))
 
 		buf := NewBuffer(30, 6)
 		tmpl.Execute(buf, 30, 6)
@@ -293,19 +256,17 @@ func TestTableComponent(t *testing.T) {
 			{"Bob", "25", "Designer"},
 			{"Carol", "35", "Manager"},
 		}
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				Table{
-					Columns: []TableColumn{
-						{Header: "Name", Width: 10},
-						{Header: "Age", Width: 5, Align: AlignRight},
-						{Header: "Role", Width: 12},
-					},
-					Rows:       &rows,
-					ShowHeader: true,
+		tmpl := Build(VBox(
+			Table{
+				Columns: []TableColumn{
+					{Header: "Name", Width: 10},
+					{Header: "Age", Width: 5, Align: AlignRight},
+					{Header: "Role", Width: 12},
 				},
+				Rows:       &rows,
+				ShowHeader: true,
 			},
-		})
+		))
 
 		buf := NewBuffer(40, 10)
 		tmpl.Execute(buf, 40, 10)
@@ -401,12 +362,10 @@ func TestTableComponent(t *testing.T) {
 func TestSparklineComponent(t *testing.T) {
 	t.Run("basic sparkline renders", func(t *testing.T) {
 		values := []float64{1, 3, 5, 7, 5, 3, 1, 2, 4, 6, 8}
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				TextNode{Content: "CPU:"},
-				SparklineNode{Values: values},
-			},
-		})
+		tmpl := Build(VBox(
+			Text("CPU:"),
+			Sparkline(values),
+		))
 
 		buf := NewBuffer(20, 5)
 		tmpl.Execute(buf, 20, 5)
@@ -433,7 +392,7 @@ func TestSparklineComponent(t *testing.T) {
 
 	t.Run("sparkline updates dynamically", func(t *testing.T) {
 		values := []float64{1, 2, 3, 4, 5}
-		tmpl := Build(SparklineNode{Values: &values, Width: 10})
+		tmpl := Build(Sparkline(&values).Width(10))
 
 		buf := NewBuffer(15, 3)
 		tmpl.Execute(buf, 15, 3)
@@ -455,11 +414,7 @@ func TestSparklineComponent(t *testing.T) {
 
 	t.Run("sparkline with fixed min/max", func(t *testing.T) {
 		values := []float64{25, 50, 75}
-		tmpl := Build(SparklineNode{
-			Values: values,
-			Min:    0,
-			Max:    100,
-		})
+		tmpl := Build(Sparkline(values).Range(0, 100))
 
 		buf := NewBuffer(10, 3)
 		tmpl.Execute(buf, 10, 3)
@@ -475,13 +430,11 @@ func TestSparklineComponent(t *testing.T) {
 
 func TestHRuleVRuleSpacer(t *testing.T) {
 	t.Run("HRule fills width", func(t *testing.T) {
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				TextNode{Content: "Above"},
-				HRuleNode{},
-				TextNode{Content: "Below"},
-			},
-		})
+		tmpl := Build(VBox(
+			Text("Above"),
+			HRule(),
+			Text("Below"),
+		))
 
 		buf := NewBuffer(20, 5)
 		tmpl.Execute(buf, 20, 5)
@@ -500,11 +453,9 @@ func TestHRuleVRuleSpacer(t *testing.T) {
 	})
 
 	t.Run("HRule custom character", func(t *testing.T) {
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				HRuleNode{Char: '═'},
-			},
-		})
+		tmpl := Build(VBox(
+			HRule().Char('═'),
+		))
 
 		buf := NewBuffer(10, 3)
 		tmpl.Execute(buf, 10, 3)
@@ -517,19 +468,17 @@ func TestHRuleVRuleSpacer(t *testing.T) {
 	})
 
 	t.Run("VRule in row with height", func(t *testing.T) {
-		tmpl := Build(HBoxNode{
-			Children: []any{
-				VBoxNode{Children: []any{
-					TextNode{Content: "Left1"},
-					TextNode{Content: "Left2"},
-				}}.WidthPct(0.4),
-				VRuleNode{},
-				VBoxNode{Children: []any{
-					TextNode{Content: "Right1"},
-					TextNode{Content: "Right2"},
-				}}.WidthPct(0.5),
-			},
-		})
+		tmpl := Build(HBox(
+			VBox.WidthPct(0.4)(
+				Text("Left1"),
+				Text("Left2"),
+			),
+			VRule(),
+			VBox.WidthPct(0.5)(
+				Text("Right1"),
+				Text("Right2"),
+			),
+		))
 
 		buf := NewBuffer(20, 3)
 		tmpl.Execute(buf, 20, 3)
@@ -548,13 +497,11 @@ func TestHRuleVRuleSpacer(t *testing.T) {
 	})
 
 	t.Run("Spacer creates gap", func(t *testing.T) {
-		tmpl := Build(VBoxNode{
-			Children: []any{
-				TextNode{Content: "Line1"},
-				SpacerNode{Height: 2},
-				TextNode{Content: "Line4"},
-			},
-		})
+		tmpl := Build(VBox(
+			Text("Line1"),
+			SpaceH(2),
+			Text("Line4"),
+		))
 
 		buf := NewBuffer(20, 6)
 		tmpl.Execute(buf, 20, 6)
@@ -573,12 +520,10 @@ func TestHRuleVRuleSpacer(t *testing.T) {
 func TestSpinnerComponent(t *testing.T) {
 	t.Run("Spinner renders current frame", func(t *testing.T) {
 		frame := 0
-		tmpl := Build(HBoxNode{
-			Children: []any{
-				SpinnerNode{Frame: &frame},
-				TextNode{Content: " Loading..."},
-			},
-		})
+		tmpl := Build(HBox(
+			Spinner(&frame),
+			Text(" Loading..."),
+		))
 
 		buf := NewBuffer(20, 1)
 		tmpl.Execute(buf, 20, 1)
@@ -596,7 +541,7 @@ func TestSpinnerComponent(t *testing.T) {
 
 	t.Run("Spinner advances frames", func(t *testing.T) {
 		frame := 0
-		tmpl := Build(SpinnerNode{Frame: &frame})
+		tmpl := Build(Spinner(&frame))
 
 		buf := NewBuffer(5, 1)
 
@@ -617,10 +562,7 @@ func TestSpinnerComponent(t *testing.T) {
 
 	t.Run("Spinner with custom frames", func(t *testing.T) {
 		frame := 0
-		tmpl := Build(SpinnerNode{
-			Frame:  &frame,
-			Frames: SpinnerLine,
-		})
+		tmpl := Build(Spinner(&frame).Frames(SpinnerLine))
 
 		buf := NewBuffer(5, 1)
 		tmpl.Execute(buf, 5, 1)
@@ -633,10 +575,7 @@ func TestSpinnerComponent(t *testing.T) {
 
 	t.Run("Spinner with dots frames", func(t *testing.T) {
 		frame := 0
-		tmpl := Build(SpinnerNode{
-			Frame:  &frame,
-			Frames: SpinnerDots,
-		})
+		tmpl := Build(Spinner(&frame).Frames(SpinnerDots))
 
 		buf := NewBuffer(5, 1)
 		tmpl.Execute(buf, 5, 1)
@@ -649,7 +588,7 @@ func TestSpinnerComponent(t *testing.T) {
 
 	t.Run("Spinner wraps frame index", func(t *testing.T) {
 		frame := 10 // SpinnerBraille has 10 frames, so this should wrap to 0
-		tmpl := Build(SpinnerNode{Frame: &frame})
+		tmpl := Build(Spinner(&frame))
 
 		buf := NewBuffer(5, 1)
 		tmpl.Execute(buf, 5, 1)
@@ -664,17 +603,10 @@ func TestSpinnerComponent(t *testing.T) {
 func TestScrollbarComponent(t *testing.T) {
 	t.Run("Vertical scrollbar at top", func(t *testing.T) {
 		pos := 0
-		tmpl := Build(HBoxNode{
-			Children: []any{
-				TextNode{Content: "Content"},
-				ScrollbarNode{
-					ContentSize: 100,
-					ViewSize:    10,
-					Position:    &pos,
-					Length:      10,
-				},
-			},
-		})
+		tmpl := Build(HBox(
+			Text("Content"),
+			Scroll(100, 10, &pos).Length(10),
+		))
 
 		buf := NewBuffer(20, 10)
 		tmpl.Execute(buf, 20, 10)
@@ -692,12 +624,7 @@ func TestScrollbarComponent(t *testing.T) {
 
 	t.Run("Vertical scrollbar at bottom", func(t *testing.T) {
 		pos := 90 // scrolled to bottom
-		tmpl := Build(ScrollbarNode{
-			ContentSize: 100,
-			ViewSize:    10,
-			Position:    &pos,
-			Length:      10,
-		})
+		tmpl := Build(Scroll(100, 10, &pos).Length(10))
 
 		buf := NewBuffer(5, 10)
 		tmpl.Execute(buf, 5, 10)
@@ -715,13 +642,7 @@ func TestScrollbarComponent(t *testing.T) {
 
 	t.Run("Horizontal scrollbar", func(t *testing.T) {
 		pos := 0
-		tmpl := Build(ScrollbarNode{
-			ContentSize: 100,
-			ViewSize:    10,
-			Position:    &pos,
-			Length:      10,
-			Horizontal:  true,
-		})
+		tmpl := Build(Scroll(100, 10, &pos).Length(10).Horizontal())
 
 		buf := NewBuffer(10, 3)
 		tmpl.Execute(buf, 10, 3)
@@ -738,12 +659,7 @@ func TestScrollbarComponent(t *testing.T) {
 
 	t.Run("Scrollbar thumb moves with position", func(t *testing.T) {
 		pos := 0
-		tmpl := Build(ScrollbarNode{
-			ContentSize: 100,
-			ViewSize:    10,
-			Position:    &pos,
-			Length:      10,
-		})
+		tmpl := Build(Scroll(100, 10, &pos).Length(10))
 
 		buf := NewBuffer(5, 10)
 
@@ -776,14 +692,7 @@ func TestScrollbarComponent(t *testing.T) {
 
 	t.Run("Custom scrollbar characters", func(t *testing.T) {
 		pos := 0
-		tmpl := Build(ScrollbarNode{
-			ContentSize: 20,
-			ViewSize:    5,
-			Position:    &pos,
-			Length:      4,
-			TrackChar:   '░',
-			ThumbChar:   '▓',
-		})
+		tmpl := Build(Scroll(20, 5, &pos).Length(4).TrackChar('░').ThumbChar('▓'))
 
 		buf := NewBuffer(5, 4)
 		tmpl.Execute(buf, 5, 4)
@@ -1139,31 +1048,15 @@ func TestSparklineInHBoxGrowPanels(t *testing.T) {
 	label := "142 req/s"
 
 	tmpl := Build(
-		VBoxNode{
-			Children: []any{
-				HBoxNode{
-					Gap: 1,
-					Children: []any{
-						VBoxNode{
-							Title:    "requests/s",
-							Children: []any{SparklineNode{Values: data}, TextNode{Content: label}},
-						}.Border(BorderSingle).Grow(1),
-						VBoxNode{
-							Title:    "p99 latency",
-							Children: []any{SparklineNode{Values: data}, TextNode{Content: label}},
-						}.Border(BorderSingle).Grow(1),
-						VBoxNode{
-							Title:    "error rate",
-							Children: []any{SparklineNode{Values: data}, TextNode{Content: label}},
-						}.Border(BorderSingle).Grow(1),
-					},
-				},
-				// service table with Grow(1) in root VBox context
-				VBoxNode{
-					Children: []any{TextNode{Content: "services"}},
-				}.Border(BorderSingle).Grow(1),
-			},
-		},
+		VBox(
+			HBox.Gap(1)(
+				VBox.Border(BorderSingle).Grow(1).Title("requests/s")(Sparkline(data), Text(label)),
+				VBox.Border(BorderSingle).Grow(1).Title("p99 latency")(Sparkline(data), Text(label)),
+				VBox.Border(BorderSingle).Grow(1).Title("error rate")(Sparkline(data), Text(label)),
+			),
+			// service table with Grow(1) in root VBox context
+			VBox.Border(BorderSingle).Grow(1)(Text("services")),
+		),
 	)
 
 	buf := NewBuffer(80, 20)
@@ -1201,16 +1094,9 @@ func TestSparklineGrowInsideBorderedVBox(t *testing.T) {
 	data := []float64{1, 2, 3, 4, 5, 4, 3, 2, 1, 2}
 
 	tmpl := Build(
-		VBoxNode{
-			Children: []any{
-				VBoxNode{
-					Children: []any{
-						SparklineNode{Values: data},
-						TextNode{Content: "label"},
-					},
-				}.Border(BorderSingle).Grow(1),
-			},
-		},
+		VBox(
+			VBox.Border(BorderSingle).Grow(1)(Sparkline(data), Text("label")),
+		),
 	)
 
 	buf := NewBuffer(40, 10)
