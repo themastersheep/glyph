@@ -12,6 +12,20 @@ import (
 	"github.com/kungfusheep/riffkey"
 )
 
+// Rose Piné palette
+var (
+	rpBase    = Hex(0x191724)
+	rpSurface = Hex(0x1f1d2e)
+	rpOverlay = Hex(0x26233a)
+	rpText    = Hex(0xe0def4)
+	rpSubtle  = Hex(0x908caa)
+	rpMuted   = Hex(0x6e6a86)
+	rpLove    = Hex(0xeb6f92)
+	rpGold    = Hex(0xf6c177)
+	rpFoam    = Hex(0x9ccfd8)
+	rpIris    = Hex(0xc4a7e7)
+)
+
 type service struct {
 	Name       string
 	Status     string
@@ -71,11 +85,10 @@ func main() {
 	}
 	app.JumpKey("g")
 
-	// helper: metric panel with sparkline + label, grows equally in an HBox
 	metricPanel := func(title string, data *[]float64, label *string, col Color) any {
-		return VBox.Grow(1).Border(BorderRounded).BorderFG(BrightBlack).Title(title)(
+		return VBox.Grow(1).Border(BorderRounded).BorderFG(rpOverlay).Title(title)(
 			Sparkline(data).FG(col),
-			Text(label).FG(BrightBlack),
+			Text(label).FG(rpMuted),
 		)
 	}
 
@@ -84,15 +97,15 @@ func main() {
 		Render(func(svc *service) any {
 			return HBox.Gap(2)(
 				VBox.Width(1)(Switch(&svc.Status).
-					Case("warn", Text("○").FG(BrightBlack)).
-					Default(Text("●").FG(BrightBlack))),
-				Text(&svc.Name),
+					Case("warn", Text("○").FG(rpGold)).
+					Default(Text("●").FG(rpFoam))),
+				Text(&svc.Name).FG(rpText),
 				Space(),
-				Text(&svc.CPUStr).FG(BrightBlack).Width(6).Align(AlignRight),
-				Text(&svc.Mem).FG(BrightBlack).Width(8).Align(AlignRight),
+				Text(&svc.CPUStr).FG(rpSubtle).Width(6).Align(AlignRight),
+				Text(&svc.Mem).FG(rpSubtle).Width(8).Align(AlignRight),
 				VBox.Width(11)(Switch(&svc.Status).
-					Case("warn", Text("degraded").FG(Yellow)).
-					Default(Text("healthy").FG(BrightBlack))),
+					Case("warn", Text("degraded").FG(rpGold)).
+					Default(Text("healthy").FG(rpMuted))),
 			)
 		}).
 		Handle("<Enter>", func(svc *service) {
@@ -104,97 +117,114 @@ func main() {
 		}).
 		HandleClear("<Esc>", nil)
 
+	var popupRef NodeRef
 	app.SetView(
-		VBox.MarginVH(1, 2)(
-			HBox.CascadeStyle(&Style{FG: BrightBlack})(
-				Text("● glyph control"),
+		VBox.Grow(1).Fill(rpBase).CascadeStyle(&Style{FG: rpText})(
+			VBox.Grow(1).MarginVH(1, 2)(
+			HBox.CascadeStyle(&Style{FG: rpSubtle})(
+				Text("● glyph control").FG(rpIris),
 				Space(),
 				Text("prod-us-east-1  "),
 				Text(&clock),
 			),
-			HRule().Char(BorderDouble.Horizontal).FG(BrightBlack),
+			HRule().Char(BorderDouble.Horizontal).FG(rpOverlay),
 
 			HBox.Gap(1)(
-				metricPanel("requests/s", &reqData, &reqRate, Cyan),
-				metricPanel("p99 latency", &latData, &p99Lat, Green),
-				metricPanel("error rate", &errData, &errRate, Yellow),
+				metricPanel("requests/s", &reqData, &reqRate, rpFoam),
+				metricPanel("p99 latency", &latData, &p99Lat, rpIris),
+				metricPanel("error rate", &errData, &errRate, rpGold),
 			),
 
 			HBox.Grow(1).Gap(1)(
-				VBox.Grow(1).Border(BorderRounded).BorderFG(BrightBlack).Title("services")(
+				VBox.Grow(1).Border(BorderRounded).BorderFG(rpOverlay).Title("services")(
 					HBox.Gap(2)(
-						Text("●").FG(BrightBlack),
-						Text("SERVICE").FG(BrightBlack),
+						Text("●").FG(rpMuted),
+						Text("SERVICE").FG(rpMuted),
 						Space(),
-						Text("CPU").FG(BrightBlack).Width(6).Align(AlignRight),
-						Text("MEM").FG(BrightBlack).Width(8).Align(AlignRight),
-						Text("STATUS").FG(BrightBlack).Width(11),
+						Text("CPU").FG(rpMuted).Width(6).Align(AlignRight),
+						Text("MEM").FG(rpMuted).Width(8).Align(AlignRight),
+						Text("STATUS").FG(rpMuted).Width(11),
 					),
-					HRule().FG(BrightBlack).Extend(),
+					HRule().FG(rpOverlay).Extend(),
 					svcList,
 				),
-				VBox.Border(BorderRounded).BorderFG(BrightBlack).Title("log")(
+				VBox.Border(BorderRounded).BorderFG(rpOverlay).Title("log")(
 					ForEach(&logLines, func(l *string) any {
-						return Text(l).FG(BrightBlack)
+						return Text(l).FG(rpMuted)
 					}),
 				),
 			),
 
-			HRule().Char(BorderDouble.Horizontal).FG(BrightBlack),
-			Text("press [ctrl+c] to quit  [enter] to inspect  [r] restart (modal)").FG(BrightBlack),
+			HRule().Char(BorderDouble.Horizontal).FG(rpOverlay),
+			Text("press [ctrl+c] to quit  [enter] to inspect  [r] restart (modal)").FG(rpMuted),
 
 			If(&showModal).Then(OverlayNode{
-				Backdrop: true,
-				BG:       Black,
-				Child: VBox.Width(46).MarginVH(1, 2).Fill(Black)(
+				Centered: true,
+				Child: VBox.Gap(0).Width(46).Fill(rpSurface).NodeRef(&popupRef)(
+					SpaceH(1),
 					HBox(
 						If(&selectedSvc.Status).Eq("warn").
-							Then(Text("○ ").FG(Yellow)).
-							Else(Text("● ").FG(Green)),
+							Then(Text("  ○ ").FG(rpGold)).
+							Else(Text("  ● ").FG(rpFoam)),
 						If(&selectedSvc.Status).Eq("warn").
-							Then(Text(&selectedSvc.Name).FG(Yellow).Bold()).
-							Else(Text(&selectedSvc.Name).FG(Green).Bold()),
+							Then(Text(&selectedSvc.Name).FG(rpGold).Bold()).
+							Else(Text(&selectedSvc.Name).FG(rpFoam).Bold()),
 						Space(),
-						Text("esc  close").FG(BrightBlack),
+						Text("esc  close  ").FG(rpMuted),
 					),
-					HRule().FG(BrightBlack),
-					Text("cpu history").FG(BrightBlack),
-					Sparkline(&selectedSvc.CPUHistory).FG(Cyan),
-					SpaceH(1),
+					HRule().FG(rpOverlay),
+					Text("  cpu history").FG(rpMuted),
+					Sparkline(&selectedSvc.CPUHistory).FG(rpIris),
 					HBox.Gap(3)(
 						VBox(
-							Text("cpu").FG(BrightBlack),
-							Text("mem").FG(BrightBlack),
+							Text("  cpu").FG(rpMuted),
+							Text("  mem").FG(rpMuted),
 						),
 						VBox(
 							IfOrd(&selectedSvc.CPU).Gt(20.0).
-								Then(Text(&selectedSvc.CPUStr).FG(Yellow)).
-								Else(Text(&selectedSvc.CPUStr).FG(White)),
-							Text(&selectedSvc.Mem).FG(White),
+								Then(Text(&selectedSvc.CPUStr).FG(rpGold)).
+								Else(Text(&selectedSvc.CPUStr).FG(rpText)),
+							Text(&selectedSvc.Mem).FG(rpText),
 						),
 					),
-					HRule().FG(BrightBlack),
+					HRule().FG(rpOverlay),
 					If(&restarting).
-						Then(HBox.Gap(1)(Text("restarting").FG(BrightBlack), HBox.Grow(1).CascadeStyle(&pulseStyle)(Progress(&restartPct)))).
-						Else(Text("[r] restart service").FG(BrightBlack)),
+						Then(
+							HBox.Gap(1)(
+								Text("  restarting").FG(rpMuted),
+								HBox.Grow(1).CascadeStyle(&pulseStyle)(
+									Progress(&restartPct),
+								),
+							),
+						).
+						Else(
+							Text("  [r] restart service").FG(rpMuted),
+						),
+					SpaceH(1),
+					ScreenEffect(
+						SEVignette().Dodge(&popupRef).Smooth(),
+						// SEDropShadow().Focus(&popupRef),
+						SEGlow().Focus(&popupRef).Brightness(1.1),
+					),
 				),
-			}),
+				}),
+			),
 		),
 	)
 
-
 	app.Handle("<C-c>", func(_ riffkey.Match) { app.Stop() })
+	app.Handle("<Escape>", func(_ riffkey.Match) {})
 
-	app.Handle("<Escape>", func(_ riffkey.Match) {
-		if showModal {
-			showModal = false
-			restarting = false
-			app.Pop()
-			app.RequestRender()
-		}
-	})
+	closeModal := func() {
+		showModal = false
+		restarting = false
+		app.Pop()
+		app.RequestRender()
+	}
 
 	modalRouter = riffkey.NewRouter()
+	modalRouter.Handle("<Escape>", func(_ riffkey.Match) { closeModal() })
+	modalRouter.Handle("<C-c>", func(_ riffkey.Match) { app.Stop() })
 	modalRouter.Handle("r", func(_ riffkey.Match) {
 		if restarting {
 			return
@@ -210,15 +240,11 @@ func main() {
 				pulseStyle.FG = RGB(uint8(30+b*80), uint8(120+b*100), uint8(110+b*90))
 				app.RequestRender()
 			}
-			restarting = false
-			restartPct = 0
 			selectedSvc.Status = "live"
 			if selectedPtr != nil {
 				selectedPtr.Status = "live"
 			}
-			showModal = false
-			app.Pop()
-			app.RequestRender()
+			closeModal()
 		}()
 	})
 

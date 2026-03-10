@@ -4389,8 +4389,9 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 			tmpl = op.SwitchDef
 		}
 		if tmpl != nil {
-			tmpl.clipMaxY = t.clipMaxY // propagate vertical clip
-			tmpl.elemBase = t.elemBase // propagate for OpTextOff inside case templates
+			tmpl.clipMaxY = t.clipMaxY           // propagate vertical clip
+			tmpl.inheritedFill = t.inheritedFill // propagate fill so blank cells use parent bg
+			tmpl.elemBase = t.elemBase           // propagate for OpTextOff inside case templates
 			tmpl.render(buf, absX, absY, geom.W)
 		}
 	}
@@ -4399,8 +4400,9 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 // renderSubTemplate renders a sub-template (for ForEach) with element-bound data.
 func (t *Template) renderSubTemplate(buf *Buffer, sub *Template, globalX, globalY, maxW int16, elemBase unsafe.Pointer) {
 	sub.app = t.app
-	sub.clipMaxY = t.clipMaxY // propagate vertical clip
-	sub.elemBase = elemBase   // ensure renderOp paths (e.g. via renderJump) see the correct element
+	sub.clipMaxY = t.clipMaxY       // propagate vertical clip
+	sub.inheritedFill = t.inheritedFill // propagate fill so blank cells use parent bg
+	sub.elemBase = elemBase         // ensure renderOp paths (e.g. via renderJump) see the correct element
 	for i := range sub.ops {
 		if sub.ops[i].Parent == -1 {
 			sub.renderSubOp(buf, int16(i), globalX, globalY, maxW, elemBase)
@@ -4919,7 +4921,7 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 		}
 
 		// Write marker first
-		buf.WriteStringFast(int(absX), y, markerText, markerStyle, int(maxW))
+		buf.WriteStringFast(int(absX), y, markerText, t.effectiveStyle(markerStyle), int(maxW))
 
 		// Get content from iteration template
 		if op.IterTmpl != nil && len(op.IterTmpl.ops) > 0 {
@@ -4959,17 +4961,17 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 				switch iterOp.Kind {
 				case OpText:
 					txt := applyTransform(iterOp.StaticStr, effStyle.Transform)
-					buf.WriteStringFast(int(contentX), y, txt, textStyle, int(contentW))
+					buf.WriteStringFast(int(contentX), y, txt, effStyle, int(contentW))
 				case OpTextPtr:
 					txt := applyTransform(*iterOp.StrPtr, effStyle.Transform)
-					buf.WriteStringFast(int(contentX), y, txt, textStyle, int(contentW))
+					buf.WriteStringFast(int(contentX), y, txt, effStyle, int(contentW))
 				case OpTextFn:
 					txt := applyTransform(iterOp.StrFn(), effStyle.Transform)
-					buf.WriteStringFast(int(contentX), y, txt, textStyle, int(contentW))
+					buf.WriteStringFast(int(contentX), y, txt, effStyle, int(contentW))
 				case OpTextOff:
 					strPtr := (*string)(unsafe.Pointer(uintptr(elemPtr) + iterOp.StrOff))
 					txt := applyTransform(*strPtr, effStyle.Transform)
-					buf.WriteStringFast(int(contentX), y, txt, textStyle, int(contentW))
+					buf.WriteStringFast(int(contentX), y, txt, effStyle, int(contentW))
 				case OpRichText:
 					spans := iterOp.StaticSpans
 					if iterOp.SpanStrOffs != nil {
@@ -5141,6 +5143,11 @@ func (t *Template) renderTextInput(buf *Buffer, op *Op, geom *Geom, absX, absY i
 		return
 	}
 
+	// Resolve styles through the cascade so inheritedFill applies as BG
+	textStyle := t.effectiveStyle(op.TextInputStyle)
+	placeholderStyle := t.effectiveStyle(op.TextInputPlaceholderSty)
+	cursorStyle := t.effectiveStyle(op.TextInputCursorStyle)
+
 	// Get value and cursor - prefer Field API, fall back to pointer API
 	var value string
 	var cursor int
@@ -5180,11 +5187,11 @@ func (t *Template) renderTextInput(buf *Buffer, op *Op, geom *Geom, absX, absY i
 	// Handle empty state with placeholder
 	if value == "" {
 		if op.TextInputPlaceholder != "" {
-			buf.WriteStringFast(int(absX), int(absY), op.TextInputPlaceholder, op.TextInputPlaceholderSty, width)
+			buf.WriteStringFast(int(absX), int(absY), op.TextInputPlaceholder, placeholderStyle, width)
 		}
 		// Draw cursor at start if focused
 		if showCursor {
-			buf.Set(int(absX), int(absY), Cell{Rune: ' ', Style: op.TextInputCursorStyle})
+			buf.Set(int(absX), int(absY), Cell{Rune: ' ', Style: cursorStyle})
 		}
 		return
 	}
@@ -5220,10 +5227,10 @@ func (t *Template) renderTextInput(buf *Buffer, op *Op, geom *Geom, absX, absY i
 
 	x := int(absX)
 	for i := scrollOffset; i < visibleEnd; i++ {
-		style := op.TextInputStyle
+		style := textStyle
 		// Highlight cursor position if focused
 		if showCursor && i == cursorRune {
-			style = op.TextInputCursorStyle
+			style = cursorStyle
 		}
 		buf.Set(x, int(absY), Cell{Rune: displayRunes[i], Style: style})
 		x++
@@ -5231,7 +5238,7 @@ func (t *Template) renderTextInput(buf *Buffer, op *Op, geom *Geom, absX, absY i
 
 	// If cursor is at end (after last char), draw cursor there
 	if showCursor && cursorRune >= len(displayRunes) && cursorRune-scrollOffset < width {
-		buf.Set(int(absX)+cursorRune-scrollOffset, int(absY), Cell{Rune: ' ', Style: op.TextInputCursorStyle})
+		buf.Set(int(absX)+cursorRune-scrollOffset, int(absY), Cell{Rune: ' ', Style: cursorStyle})
 	}
 }
 
