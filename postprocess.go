@@ -278,8 +278,7 @@ func WithBlend(mode BlendMode, pp Effect) Effect {
 
 // WithQuantize wraps a Effect with output quantization.
 // Runs pp first, then snaps all resulting RGB values to the nearest multiple of step.
-// Use step=32 for animated effects like SEPlasma — reduces bytes/frame by ~40-50%
-// with acceptable banding at typical terminal sizes.
+// Use step=32 to reduce bytes/frame by ~40-50% with acceptable banding at typical terminal sizes.
 func WithQuantize(step uint8, pp Effect) Effect {
 	q := SEQuantize(step)
 	return funcEffect(func(buf *Buffer, ctx PostContext) {

@@ -320,7 +320,7 @@ func BenchmarkPlasmaFrame(b *testing.B) {
 			s.front.Set(x, y, Cell{Rune: 'A', Style: style})
 		}
 	}
-	plasma := SEPlasma()
+	plasma := SETint(RGB(200, 100, 50)).Strength(0.8)
 	ctx := PostContext{Width: 120, Height: 40}
 
 	b.ResetTimer()
@@ -368,7 +368,7 @@ func BenchmarkPlasmaComputeOnly(b *testing.B) {
 			buf.Set(x, y, Cell{Rune: 'A', Style: style})
 		}
 	}
-	plasma := SEPlasma()
+	plasma := SETint(RGB(200, 100, 50)).Strength(0.8)
 	ctx := PostContext{Width: 120, Height: 40}
 
 	b.ResetTimer()
@@ -401,7 +401,7 @@ func BenchmarkPlasmaFlushBuildOnly(b *testing.B) {
 			renderBuf.Set(x, y, Cell{Rune: 'A', Style: style})
 		}
 	}
-	SEPlasma().Apply(renderBuf, PostContext{Width: 120, Height: 40, Time: 1e9})
+	SETint(RGB(200, 100, 50)).Strength(0.8).Apply(renderBuf, PostContext{Width: 120, Height: 40, Time: 1e9})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -440,7 +440,7 @@ func BenchmarkWriteThroughput(b *testing.B) {
 			renderBuf.Set(x, y, Cell{Rune: 'A', Style: style})
 		}
 	}
-	SEPlasma().Apply(renderBuf, PostContext{Width: 120, Height: 40, Time: 1e9})
+	SETint(RGB(200, 100, 50)).Strength(0.8).Apply(renderBuf, PostContext{Width: 120, Height: 40, Time: 1e9})
 	copy(s.back.cells, renderBuf.cells)
 	s.back.MarkAllDirty()
 	s.front.Clear()

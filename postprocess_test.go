@@ -331,29 +331,6 @@ func TestSEDropShadow(t *testing.T) {
 	}
 }
 
-func TestSEFrost(t *testing.T) {
-	buf := NewBuffer(10, 5)
-	for y := range 5 {
-		for x := range 10 {
-			buf.Set(x, y, Cell{Rune: 'A', Style: Style{FG: RGB(255, 0, 0)}})
-		}
-	}
-
-	pass := SEFrost().Strength(1.0)
-	pass.Apply(buf, PostContext{Width: 10, Height: 5})
-
-	got := buf.Get(0, 0)
-	// rune should be replaced with a shade block
-	shades := map[rune]bool{'░': true, '▒': true, '▓': true}
-	if !shades[got.Rune] {
-		t.Errorf("SEFrost: expected shade block, got %c", got.Rune)
-	}
-	// FG should be desaturated and tinted (no longer pure red)
-	if got.Style.FG.G == 0 && got.Style.FG.B == 0 {
-		t.Error("SEFrost: expected FG to be tinted away from pure red")
-	}
-}
-
 func TestSEPulse(t *testing.T) {
 	buf := NewBuffer(2, 1)
 	buf.Set(0, 0, Cell{Rune: 'X', Style: Style{FG: RGB(200, 200, 200)}})
@@ -461,43 +438,6 @@ func TestSEBloomSkipsDark(t *testing.T) {
 }
 
 
-func TestSECRT(t *testing.T) {
-	buf := NewBuffer(20, 4)
-	for y := range 4 {
-		for x := range 20 {
-			buf.Set(x, y, Cell{Rune: 'X', Style: Style{FG: RGB(200, 200, 200)}})
-		}
-	}
-
-	pass := SECRT()
-	pass.Apply(buf, PostContext{Width: 20, Height: 4})
-
-	evenRow := buf.Get(10, 0)
-	oddRow := buf.Get(10, 1)
-	evenLum := int(evenRow.Style.FG.R) + int(evenRow.Style.FG.G) + int(evenRow.Style.FG.B)
-	oddLum := int(oddRow.Style.FG.R) + int(oddRow.Style.FG.G) + int(oddRow.Style.FG.B)
-
-	// odd rows should be darker (scanlines)
-	if oddLum >= evenLum {
-		t.Errorf("SECRT: odd row (%d) should be darker than even row (%d)", oddLum, evenLum)
-	}
-
-	// edge should be darker than center (vignette)
-	center := buf.Get(10, 2)
-	edge := buf.Get(0, 0)
-	centerLum := int(center.Style.FG.R) + int(center.Style.FG.G) + int(center.Style.FG.B)
-	edgeLum := int(edge.Style.FG.R) + int(edge.Style.FG.G) + int(edge.Style.FG.B)
-	if centerLum <= edgeLum {
-		t.Errorf("SECRT: center (%d) should be brighter than edge (%d)", centerLum, edgeLum)
-	}
-
-	// warm tint: R channel should be relatively higher than B
-	c := buf.Get(10, 0)
-	if c.Style.FG.R <= c.Style.FG.B {
-		t.Errorf("SECRT: expected warm tint (R > B), got R=%d B=%d", c.Style.FG.R, c.Style.FG.B)
-	}
-}
-
 func TestSEMonochrome(t *testing.T) {
 	buf := NewBuffer(1, 1)
 	buf.Set(0, 0, Cell{Rune: 'X', Style: Style{FG: RGB(255, 0, 0)}})
@@ -535,97 +475,6 @@ func TestSEMonochromeAmber(t *testing.T) {
 		t.Errorf("SEMonochrome amber: B should be 0, got %d", got.Style.FG.B)
 	}
 }
-
-func TestSEPlasma(t *testing.T) {
-	buf := NewBuffer(10, 5)
-	for y := range 5 {
-		for x := range 10 {
-			buf.Set(x, y, Cell{Rune: 'X', Style: Style{FG: RGB(128, 128, 128)}})
-		}
-	}
-
-	pass := SEPlasma().Strength(1.0)
-	pass.Apply(buf, PostContext{Width: 10, Height: 5, Time: 1 * time.Second})
-
-	// cells at different positions should have different colours (it's a plasma)
-	a := buf.Get(0, 0)
-	b := buf.Get(5, 2)
-	if a.Style.FG.R == b.Style.FG.R && a.Style.FG.G == b.Style.FG.G && a.Style.FG.B == b.Style.FG.B {
-		t.Error("SEPlasma: different positions should have different colours")
-	}
-}
-
-
-func TestSEFire(t *testing.T) {
-	buf := NewBuffer(20, 10)
-	for y := range 10 {
-		for x := range 20 {
-			buf.Set(x, y, Cell{Rune: 'X', Style: Style{FG: RGB(100, 100, 100), BG: RGB(20, 20, 20)}})
-		}
-	}
-
-	pass := SEFire()
-	// run a few frames to let fire propagate
-	for frame := range 30 {
-		pass.Apply(buf, PostContext{Width: 20, Height: 10, Time: time.Duration(frame*33) * time.Millisecond})
-	}
-
-	// bottom rows should have some fire-coloured cells (red-ish)
-	firePixels := 0
-	for x := range 20 {
-		c := buf.Get(x, 9)
-		if c.Style.FG.R > c.Style.FG.B {
-			firePixels++
-		}
-	}
-	if firePixels == 0 {
-		t.Error("SEFire: expected some red/fire coloured cells on bottom row")
-	}
-
-	// fire should use shade block characters
-	shades := map[rune]bool{'░': true, '▒': true, '▓': true, '█': true}
-	hasShade := false
-	for x := range 20 {
-		if shades[buf.Get(x, 9).Rune] {
-			hasShade = true
-			break
-		}
-	}
-	if !hasShade {
-		t.Error("SEFire: expected shade block characters in fire area")
-	}
-}
-
-func BenchmarkSEPlasmaEarlyTime(b *testing.B) {
-	buf := NewBuffer(200, 50)
-	for y := range 50 {
-		for x := range 200 {
-			buf.Set(x, y, Cell{Rune: 'X', Style: Style{FG: RGB(128, 128, 128), BG: RGB(20, 20, 30)}})
-		}
-	}
-	pass := SEPlasma()
-	ctx := PostContext{Width: 200, Height: 50, Time: 1 * time.Second}
-	b.ResetTimer()
-	for range b.N {
-		pass.Apply(buf, ctx)
-	}
-}
-
-func BenchmarkSEPlasmaLateTime(b *testing.B) {
-	buf := NewBuffer(200, 50)
-	for y := range 50 {
-		for x := range 200 {
-			buf.Set(x, y, Cell{Rune: 'X', Style: Style{FG: RGB(128, 128, 128), BG: RGB(20, 20, 30)}})
-		}
-	}
-	pass := SEPlasma()
-	ctx := PostContext{Width: 200, Height: 50, Time: 5 * time.Minute}
-	b.ResetTimer()
-	for range b.N {
-		pass.Apply(buf, ctx)
-	}
-}
-
 
 func TestBlendMultiply(t *testing.T) {
 	a := RGB(200, 100, 50)
@@ -696,7 +545,7 @@ func TestWithBlend(t *testing.T) {
 	}
 }
 
-func TestWithBlendPlasma(t *testing.T) {
+func TestWithBlendTint(t *testing.T) {
 	buf := NewBuffer(5, 3)
 	for y := range 3 {
 		for x := range 5 {
@@ -704,14 +553,14 @@ func TestWithBlendPlasma(t *testing.T) {
 		}
 	}
 
-	pass := WithBlend(BlendMultiply, SEPlasma().Strength(1.0))
-	pass.Apply(buf, PostContext{Width: 5, Height: 3, Time: 1 * time.Second})
+	pass := WithBlend(BlendMultiply, SETint(RGB(128, 128, 128)).Strength(1.0))
+	pass.Apply(buf, PostContext{Width: 5, Height: 3})
 
-	// plasma through multiply should be darker than original
+	// tint through multiply should be darker than original
 	got := buf.Get(2, 1)
 	lum := int(got.Style.FG.R) + int(got.Style.FG.G) + int(got.Style.FG.B)
 	if lum >= 600 {
-		t.Errorf("WithBlend(Multiply, Plasma): expected darkened output, got lum=%d", lum)
+		t.Errorf("WithBlend(Multiply, Tint): expected darkened output, got lum=%d", lum)
 	}
 }
 

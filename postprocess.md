@@ -53,14 +53,12 @@ ScreenEffect(
 | `SEVignette()` | Darkens screen edges with quadratic falloff | `.Strength()` `.Focus()` `.Dodge()` `.Smooth()` |
 | `SEDesaturate()` | Removes colour saturation (perceptual luminance) | `.Strength()` `.Dodge()` |
 | `SEContrast()` | Pushes colour channels toward extremes | `.Strength()` `.Dodge()` |
-| `SEFadeRows(top, bottom, color)` | Fades N rows at each edge toward a colour | — |
 
 ### Purposeful — modal and focus patterns
 
 | Effect | What it does | Key knobs |
 |---|---|---|
 | `SEFocusDim(&ref)` | Dims everything outside a node | — |
-| `SEFrost()` | Frosted glass — replaces chars with shade blocks and desaturates | `.Strength()` `.Focus()` `.Dodge()` |
 | `SEDropShadow()` | Radial darkening outward from a focus node | `.Focus()` `.Strength()` `.Radius()` `.Offset()` `.Tint()` |
 | `SEGlow()` | Colour-sampling glow — reads edge pixels and spills a brightened version outward | `.Focus()` `.Strength()` `.Radius()` `.Brightness()` |
 
@@ -71,7 +69,6 @@ ScreenEffect(
 | Effect | What it does | Key knobs |
 |---|---|---|
 | `SEBloom()` | Bleeds bright cell colours into their neighbours | `.Threshold()` `.Strength()` `.Radius()` `.Focus()` |
-| `SECRT()` | CRT scanlines + vignette + warm phosphor tint | — |
 | `SEMonochrome(tint)` | Single-tint monochrome | `.Dodge()` |
 | `SEGradientMap(dark, mid, bright)` | Remaps all luminance through a three-stop gradient | — |
 
@@ -89,11 +86,11 @@ ScreenEffect(
 `WithBlend` supports: `BlendNormal`, `BlendMultiply`, `BlendScreen`, `BlendOverlay`, `BlendAdd`, `BlendSoftLight`, `BlendColorDodge`, `BlendColorBurn`.
 
 ```go
-// fire through screen blend — additive bright
-ScreenEffect(WithBlend(BlendScreen, SEFire()))
+// bloom through screen blend — additive bright
+ScreenEffect(WithBlend(BlendScreen, SEBloom()))
 
-// plasma through overlay with quantization — efficient animated wash
-ScreenEffect(WithQuantize(32, WithBlend(BlendOverlay, SEPlasma())))
+// tint through overlay — warm colour wash
+ScreenEffect(WithBlend(BlendOverlay, SETint(Hex(0xFF6600)).Strength(0.3)))
 ```
 
 ## Custom effects

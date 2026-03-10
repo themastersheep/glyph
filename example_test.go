@@ -837,19 +837,13 @@ func ExampleEachCell() {
 // Blend mode wrapper.
 // Snapshots the buffer, runs the effect, then blends the result back using a Photoshop-style mode.
 func ExampleWithBlend() {
-	ScreenEffect(WithBlend(BlendScreen, SEFire()))
-}
-
-// Plasma through overlay blend.
-// Combine blend modes with quantization for efficient animated effects.
-func ExampleWithBlend_quantized() {
-	ScreenEffect(WithQuantize(32, WithBlend(BlendOverlay, SEPlasma())))
+	ScreenEffect(WithBlend(BlendScreen, SEBloom()))
 }
 
 // Quantize wrapper.
-// Snap colours to step-size buckets after an effect runs. Use step=32 to cut animation bytes ~40%.
+// Snap colours to step-size buckets after an effect runs. Use step=32 to cut output size.
 func ExampleWithQuantize() {
-	ScreenEffect(WithQuantize(32, SEPlasma()))
+	ScreenEffect(WithQuantize(32, SEBloom()))
 }
 
 // Manual colour blend.
@@ -926,18 +920,6 @@ func ExampleSEFocusDim() {
 	ScreenEffect(SEFocusDim(&panel))
 }
 
-// Frosted glass behind a modal.
-func ExampleSEFrost() {
-	var modal NodeRef
-	ScreenEffect(SEFrost().Dodge(&modal))
-}
-
-// Frost only a specific region.
-func ExampleSEFrost_focus() {
-	var sidebar NodeRef
-	ScreenEffect(SEFrost().Focus(&sidebar))
-}
-
 // Remap colours through a three-stop gradient.
 func ExampleSEGradientMap() {
 	ScreenEffect(SEGradientMap(
@@ -976,11 +958,6 @@ func ExampleSEBloom_focus() {
 	ScreenEffect(SEBloom().Focus(&panel))
 }
 
-// CRT scanlines + vignette + phosphor warmth.
-func ExampleSECRT() {
-	ScreenEffect(SECRT())
-}
-
 // Green phosphor monochrome.
 func ExampleSEMonochrome() {
 	ScreenEffect(SEMonochrome(RGB(0, 255, 80)))
@@ -990,11 +967,6 @@ func ExampleSEMonochrome() {
 func ExampleSEMonochrome_dodge() {
 	var panel NodeRef
 	ScreenEffect(SEMonochrome(RGB(0, 255, 80)).Dodge(&panel))
-}
-
-// Fade top and bottom rows toward black.
-func ExampleSEFadeRows() {
-	ScreenEffect(SEFadeRows(5, 5, Color{Mode: ColorRGB}))
 }
 
 // Snap colours to 32-level steps.
