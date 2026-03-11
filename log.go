@@ -13,8 +13,9 @@ type LogC struct {
 	onUpdate   func() // called when new lines arrive (for RequestRender)
 
 	// layout
-	grow   float32
-	margin [4]int16
+	grow        float32
+	margin      [4]int16
+	flexGrowPtr *float32
 
 	// key bindings
 	declaredBindings []binding
@@ -57,9 +58,18 @@ func (lv *LogC) AutoScroll(enabled bool) *LogC {
 	return lv
 }
 
-// Grow sets the flex grow factor.
-func (lv *LogC) Grow(g float32) *LogC {
-	lv.grow = g
+// Grow sets the flex grow factor. Accepts float32, float64, int, or *float32 for dynamic values.
+func (lv *LogC) Grow(g any) *LogC {
+	switch val := g.(type) {
+	case float32:
+		lv.grow = val
+	case float64:
+		lv.grow = float32(val)
+	case int:
+		lv.grow = float32(val)
+	case *float32:
+		lv.flexGrowPtr = val
+	}
 	return lv
 }
 
@@ -244,7 +254,12 @@ func (t *Template) compileLogC(lv *LogC, parent int16, depth int) int16 {
 	lv.started.Do(lv.start)
 
 	// compile as LayerView with the internal layer
-	layerView := LayerView(lv.layer).Grow(lv.grow)
+	var layerView LayerViewC
+	if lv.flexGrowPtr != nil {
+		layerView = LayerView(lv.layer).Grow(lv.flexGrowPtr)
+	} else {
+		layerView = LayerView(lv.layer).Grow(lv.grow)
+	}
 	if lv.margin != [4]int16{} {
 		layerView = layerView.MarginTRBL(lv.margin[0], lv.margin[1], lv.margin[2], lv.margin[3])
 	}

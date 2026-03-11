@@ -14,8 +14,9 @@ type FilterLogC struct {
 	lastQuery   string
 
 	// layout
-	grow   float32
-	margin [4]int16
+	grow        float32
+	margin      [4]int16
+	flexGrowPtr *float32
 
 	// focus management
 	focused bool
@@ -76,7 +77,9 @@ func (fl *FilterLogC) toTemplate() any {
 	}
 
 	box := VBox
-	if fl.grow > 0 {
+	if fl.flexGrowPtr != nil {
+		box = box.Grow(fl.flexGrowPtr)
+	} else if fl.grow > 0 {
 		box = box.Grow(fl.grow)
 	}
 	if fl.margin != [4]int16{} {
@@ -107,10 +110,22 @@ func (fl *FilterLogC) MaxLines(n int) *FilterLogC {
 	return fl
 }
 
-// Grow sets the flex grow factor.
-func (fl *FilterLogC) Grow(g float32) *FilterLogC {
-	fl.grow = g
-	fl.log.grow = g
+// Grow sets the flex grow factor. Accepts float32, float64, int, or *float32 for dynamic values.
+func (fl *FilterLogC) Grow(g any) *FilterLogC {
+	switch val := g.(type) {
+	case float32:
+		fl.grow = val
+		fl.log.grow = val
+	case float64:
+		fl.grow = float32(val)
+		fl.log.grow = float32(val)
+	case int:
+		fl.grow = float32(val)
+		fl.log.grow = float32(val)
+	case *float32:
+		fl.flexGrowPtr = val
+		fl.log.flexGrowPtr = val
+	}
 	return fl
 }
 

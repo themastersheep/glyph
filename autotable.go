@@ -333,6 +333,7 @@ type AutoTableC struct {
 	gap         int8
 	border      BorderStyle
 	margin      [4]int16
+	gapPtr      *int8
 
 	columnConfigs map[string]ColumnOption // per-column config keyed by field name
 
@@ -402,9 +403,16 @@ func (t AutoTableC) AltRowStyle(s Style) AutoTableC {
 	return t
 }
 
-// Gap sets the spacing between columns.
-func (t AutoTableC) Gap(g int8) AutoTableC {
-	t.gap = g
+// Gap sets the spacing between columns. Accepts int8, int, or *int8 for dynamic values.
+func (t AutoTableC) Gap(g any) AutoTableC {
+	switch val := g.(type) {
+	case int8:
+		t.gap = val
+	case int:
+		t.gap = int8(val)
+	case *int8:
+		t.gapPtr = val
+	}
 	return t
 }
 

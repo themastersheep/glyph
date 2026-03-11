@@ -67,8 +67,13 @@ type VBoxC struct {
 	flexGrow     float32
 	fitContent   bool
 	margin       [4]int16 // top, right, bottom, left
-	nodeRef      *NodeRef
-	children     []any
+	nodeRef         *NodeRef
+	widthPtr        *int16
+	heightPtr       *int16
+	gapPtr          *int8
+	percentWidthPtr *float32
+	flexGrowPtr     *float32
+	children        []any
 }
 
 type VBoxFn func(children ...any) VBoxC
@@ -91,11 +96,18 @@ func (f VBoxFn) CascadeStyle(s *Style) VBoxFn {
 	}
 }
 
-// Gap sets the spacing between children.
-func (f VBoxFn) Gap(g int8) VBoxFn {
+// Gap sets the spacing between children. Accepts int8, int, or *int8 for dynamic values.
+func (f VBoxFn) Gap(g any) VBoxFn {
 	return func(children ...any) VBoxC {
 		v := f(children...)
-		v.gap = g
+		switch val := g.(type) {
+		case int8:
+			v.gap = val
+		case int:
+			v.gap = int8(val)
+		case *int8:
+			v.gapPtr = val
+		}
 		return v
 	}
 }
@@ -136,20 +148,34 @@ func (f VBoxFn) Title(t string) VBoxFn {
 	}
 }
 
-// Width sets a fixed width.
-func (f VBoxFn) Width(w int16) VBoxFn {
+// Width sets a fixed width. Accepts int, int16, or *int16 for dynamic values.
+func (f VBoxFn) Width(w any) VBoxFn {
 	return func(children ...any) VBoxC {
 		v := f(children...)
-		v.width = w
+		switch val := w.(type) {
+		case int16:
+			v.width = val
+		case int:
+			v.width = int16(val)
+		case *int16:
+			v.widthPtr = val
+		}
 		return v
 	}
 }
 
-// Height sets a fixed height.
-func (f VBoxFn) Height(h int16) VBoxFn {
+// Height sets a fixed height. Accepts int, int16, or *int16 for dynamic values.
+func (f VBoxFn) Height(h any) VBoxFn {
 	return func(children ...any) VBoxC {
 		v := f(children...)
-		v.height = h
+		switch val := h.(type) {
+		case int16:
+			v.height = val
+		case int:
+			v.height = int16(val)
+		case *int16:
+			v.heightPtr = val
+		}
 		return v
 	}
 }
@@ -164,20 +190,36 @@ func (f VBoxFn) Size(w, h int16) VBoxFn {
 	}
 }
 
-// WidthPct sets width as a percentage of the parent (0.0-1.0).
-func (f VBoxFn) WidthPct(pct float32) VBoxFn {
+// WidthPct sets width as a percentage of the parent (0.0-1.0). Accepts float32, float64, or *float32 for dynamic values.
+func (f VBoxFn) WidthPct(pct any) VBoxFn {
 	return func(children ...any) VBoxC {
 		v := f(children...)
-		v.percentWidth = pct
+		switch val := pct.(type) {
+		case float32:
+			v.percentWidth = val
+		case float64:
+			v.percentWidth = float32(val)
+		case *float32:
+			v.percentWidthPtr = val
+		}
 		return v
 	}
 }
 
-// Grow sets the flex grow factor.
-func (f VBoxFn) Grow(g float32) VBoxFn {
+// Grow sets the flex grow factor. Accepts float32, float64, int, or *float32 for dynamic values.
+func (f VBoxFn) Grow(g any) VBoxFn {
 	return func(children ...any) VBoxC {
 		v := f(children...)
-		v.flexGrow = g
+		switch val := g.(type) {
+		case float32:
+			v.flexGrow = val
+		case float64:
+			v.flexGrow = float32(val)
+		case int:
+			v.flexGrow = float32(val)
+		case *float32:
+			v.flexGrowPtr = val
+		}
 		return v
 	}
 }
@@ -255,8 +297,13 @@ type HBoxC struct {
 	flexGrow     float32
 	fitContent   bool
 	margin       [4]int16 // top, right, bottom, left
-	nodeRef      *NodeRef
-	children     []any
+	nodeRef         *NodeRef
+	widthPtr        *int16
+	heightPtr       *int16
+	gapPtr          *int8
+	percentWidthPtr *float32
+	flexGrowPtr     *float32
+	children        []any
 }
 
 type HBoxFn func(children ...any) HBoxC
@@ -279,11 +326,18 @@ func (f HBoxFn) CascadeStyle(s *Style) HBoxFn {
 	}
 }
 
-// Gap sets the spacing between children.
-func (f HBoxFn) Gap(g int8) HBoxFn {
+// Gap sets the spacing between children. Accepts int8, int, or *int8 for dynamic values.
+func (f HBoxFn) Gap(g any) HBoxFn {
 	return func(children ...any) HBoxC {
 		h := f(children...)
-		h.gap = g
+		switch val := g.(type) {
+		case int8:
+			h.gap = val
+		case int:
+			h.gap = int8(val)
+		case *int8:
+			h.gapPtr = val
+		}
 		return h
 	}
 }
@@ -324,20 +378,34 @@ func (f HBoxFn) Title(t string) HBoxFn {
 	}
 }
 
-// Width sets a fixed width.
-func (f HBoxFn) Width(w int16) HBoxFn {
+// Width sets a fixed width. Accepts int, int16, or *int16 for dynamic values.
+func (f HBoxFn) Width(w any) HBoxFn {
 	return func(children ...any) HBoxC {
 		h := f(children...)
-		h.width = w
+		switch val := w.(type) {
+		case int16:
+			h.width = val
+		case int:
+			h.width = int16(val)
+		case *int16:
+			h.widthPtr = val
+		}
 		return h
 	}
 }
 
-// Height sets a fixed height.
-func (f HBoxFn) Height(h int16) HBoxFn {
+// Height sets a fixed height. Accepts int, int16, or *int16 for dynamic values.
+func (f HBoxFn) Height(h any) HBoxFn {
 	return func(children ...any) HBoxC {
 		c := f(children...)
-		c.height = h
+		switch val := h.(type) {
+		case int16:
+			c.height = val
+		case int:
+			c.height = int16(val)
+		case *int16:
+			c.heightPtr = val
+		}
 		return c
 	}
 }
@@ -352,20 +420,36 @@ func (f HBoxFn) Size(w, h int16) HBoxFn {
 	}
 }
 
-// WidthPct sets width as a percentage of the parent (0.0-1.0).
-func (f HBoxFn) WidthPct(pct float32) HBoxFn {
+// WidthPct sets width as a percentage of the parent (0.0-1.0). Accepts float32, float64, or *float32 for dynamic values.
+func (f HBoxFn) WidthPct(pct any) HBoxFn {
 	return func(children ...any) HBoxC {
 		h := f(children...)
-		h.percentWidth = pct
+		switch val := pct.(type) {
+		case float32:
+			h.percentWidth = val
+		case float64:
+			h.percentWidth = float32(val)
+		case *float32:
+			h.percentWidthPtr = val
+		}
 		return h
 	}
 }
 
-// Grow sets the flex grow factor.
-func (f HBoxFn) Grow(g float32) HBoxFn {
+// Grow sets the flex grow factor. Accepts float32, float64, int, or *float32 for dynamic values.
+func (f HBoxFn) Grow(g any) HBoxFn {
 	return func(children ...any) HBoxC {
 		h := f(children...)
-		h.flexGrow = g
+		switch val := g.(type) {
+		case float32:
+			h.flexGrow = val
+		case float64:
+			h.flexGrow = float32(val)
+		case int:
+			h.flexGrow = float32(val)
+		case *float32:
+			h.flexGrowPtr = val
+		}
 		return h
 	}
 }
@@ -467,9 +551,10 @@ func Widget(
 // ============================================================================
 
 type TextC struct {
-	content any // string or *string
-	style   Style
-	width   int16 // explicit width (0 = content-sized)
+	content  any // string or *string
+	style    Style
+	width    int16 // explicit width (0 = content-sized)
+	widthPtr *int16
 }
 
 // Text creates a text display component.
@@ -534,9 +619,16 @@ func (t TextC) Strikethrough() TextC {
 // Align sets the text alignment within its available width.
 func (t TextC) Align(a Align) TextC { t.style.Align = a; return t }
 
-// Width sets a fixed width.
-func (t TextC) Width(w int16) TextC {
-	t.width = w
+// Width sets a fixed width. Accepts int16, int, or *int16 for dynamic values.
+func (t TextC) Width(w any) TextC {
+	switch val := w.(type) {
+	case int16:
+		t.width = val
+	case int:
+		t.width = int16(val)
+	case *int16:
+		t.widthPtr = val
+	}
 	return t
 }
 
@@ -604,11 +696,14 @@ func Textf(parts ...any) RichTextNode {
 // ============================================================================
 
 type SpacerC struct {
-	width    int16
-	height   int16
-	char     rune
-	style    Style
-	flexGrow float32
+	width       int16
+	height      int16
+	char        rune
+	style       Style
+	flexGrow    float32
+	widthPtr    *int16
+	heightPtr   *int16
+	flexGrowPtr *float32
 }
 
 // Space creates a flexible empty spacer.
@@ -626,15 +721,29 @@ func SpaceW(w int16) SpacerC {
 	return SpacerC{width: w}
 }
 
-// Width sets a fixed width.
-func (s SpacerC) Width(w int16) SpacerC {
-	s.width = w
+// Width sets a fixed width. Accepts int16, int, or *int16 for dynamic values.
+func (s SpacerC) Width(w any) SpacerC {
+	switch val := w.(type) {
+	case int16:
+		s.width = val
+	case int:
+		s.width = int16(val)
+	case *int16:
+		s.widthPtr = val
+	}
 	return s
 }
 
-// Height sets a fixed height.
-func (s SpacerC) Height(h int16) SpacerC {
-	s.height = h
+// Height sets a fixed height. Accepts int16, int, or *int16 for dynamic values.
+func (s SpacerC) Height(h any) SpacerC {
+	switch val := h.(type) {
+	case int16:
+		s.height = val
+	case int:
+		s.height = int16(val)
+	case *int16:
+		s.heightPtr = val
+	}
 	return s
 }
 
@@ -650,9 +759,18 @@ func (s SpacerC) Style(st Style) SpacerC {
 	return s
 }
 
-// Grow sets the flex grow factor.
-func (s SpacerC) Grow(g float32) SpacerC {
-	s.flexGrow = g
+// Grow sets the flex grow factor. Accepts float32, float64, int, or *float32 for dynamic values.
+func (s SpacerC) Grow(g any) SpacerC {
+	switch val := g.(type) {
+	case float32:
+		s.flexGrow = val
+	case float64:
+		s.flexGrow = float32(val)
+	case int:
+		s.flexGrow = float32(val)
+	case *float32:
+		s.flexGrowPtr = val
+	}
 	return s
 }
 
@@ -721,10 +839,11 @@ func (h HRuleC) MarginTRBL(a, b, c, d int16) HRuleC { h.style.margin = [4]int16{
 // ============================================================================
 
 type VRuleC struct {
-	char   rune
-	style  Style
-	height int16
-	extend bool
+	char      rune
+	style     Style
+	height    int16
+	extend    bool
+	heightPtr *int16
 }
 
 // VRule creates a vertical rule.
@@ -753,9 +872,16 @@ func (v VRuleC) BG(c Color) VRuleC { v.style.BG = c; return v }
 // Bold enables bold text.
 func (v VRuleC) Bold() VRuleC { v.style.Attr |= AttrBold; return v }
 
-// Height sets a fixed height.
-func (v VRuleC) Height(h int16) VRuleC {
-	v.height = h
+// Height sets a fixed height. Accepts int16, int, or *int16 for dynamic values.
+func (v VRuleC) Height(h any) VRuleC {
+	switch val := h.(type) {
+	case int16:
+		v.height = val
+	case int:
+		v.height = int16(val)
+	case *int16:
+		v.heightPtr = val
+	}
 	return v
 }
 
@@ -776,9 +902,10 @@ func (v VRuleC) MarginTRBL(a, b, c, d int16) VRuleC { v.style.margin = [4]int16{
 // ============================================================================
 
 type ProgressC struct {
-	value any // *int (0-100)
-	width int16
-	style Style
+	value    any // *int (0-100)
+	width    int16
+	style    Style
+	widthPtr *int16
 }
 
 // Progress creates a progress bar bound to an int pointer (0-100).
@@ -786,9 +913,16 @@ func Progress(value any) ProgressC {
 	return ProgressC{value: value}
 }
 
-// Width sets a fixed width.
-func (p ProgressC) Width(w int16) ProgressC {
-	p.width = w
+// Width sets a fixed width. Accepts int16, int, or *int16 for dynamic values.
+func (p ProgressC) Width(w any) ProgressC {
+	switch val := w.(type) {
+	case int16:
+		p.width = val
+	case int:
+		p.width = int16(val)
+	case *int16:
+		p.widthPtr = val
+	}
 	return p
 }
 
@@ -876,11 +1010,12 @@ func (s SpinnerC) MarginTRBL(a, b, c, d int16) SpinnerC {
 // ============================================================================
 
 type LeaderC struct {
-	label any // string or *string
-	value any // string or *string
-	width int16
-	fill  rune
-	style Style
+	label    any // string or *string
+	value    any // string or *string
+	width    int16
+	fill     rune
+	style    Style
+	widthPtr *int16
 }
 
 // Leader creates a label.....value display with fill characters.
@@ -889,9 +1024,16 @@ func Leader(label, value any) LeaderC {
 	return LeaderC{label: label, value: value, fill: '.'}
 }
 
-// Width sets a fixed width.
-func (l LeaderC) Width(w int16) LeaderC {
-	l.width = w
+// Width sets a fixed width. Accepts int16, int, or *int16 for dynamic values.
+func (l LeaderC) Width(w any) LeaderC {
+	switch val := w.(type) {
+	case int16:
+		l.width = val
+	case int:
+		l.width = int16(val)
+	case *int16:
+		l.widthPtr = val
+	}
 	return l
 }
 
@@ -957,12 +1099,14 @@ func (c counterC) Streaming(s *bool) counterC { c.streaming = s; return c }
 // ============================================================================
 
 type SparklineC struct {
-	values any // []float64 or *[]float64
-	width  int16
-	height int16
-	min    float64
-	max    float64
-	style  Style
+	values    any // []float64 or *[]float64
+	width     int16
+	height    int16
+	min       float64
+	max       float64
+	style     Style
+	widthPtr  *int16
+	heightPtr *int16
 }
 
 // Sparkline creates a mini bar chart using Unicode block characters (▁▂▃▄▅▆▇█).
@@ -971,16 +1115,31 @@ func Sparkline(values any) SparklineC {
 	return SparklineC{values: values}
 }
 
-// Width sets a fixed width.
-func (s SparklineC) Width(w int16) SparklineC {
-	s.width = w
+// Width sets a fixed width. Accepts int16, int, or *int16 for dynamic values.
+func (s SparklineC) Width(w any) SparklineC {
+	switch val := w.(type) {
+	case int16:
+		s.width = val
+	case int:
+		s.width = int16(val)
+	case *int16:
+		s.widthPtr = val
+	}
 	return s
 }
 
 // Height sets the vertical height in rows. Default is 1.
 // Each row adds 8 levels of vertical resolution.
-func (s SparklineC) Height(h int16) SparklineC {
-	s.height = h
+// Accepts int16, int, or *int16 for dynamic values.
+func (s SparklineC) Height(h any) SparklineC {
+	switch val := h.(type) {
+	case int16:
+		s.height = val
+	case int:
+		s.height = int16(val)
+	case *int16:
+		s.heightPtr = val
+	}
 	return s
 }
 
@@ -1058,11 +1217,12 @@ func (j JumpC) MarginTRBL(a, b, c, d int16) JumpC { j.margin = [4]int16{a, b, c,
 // ============================================================================
 
 type LayerViewC struct {
-	layer      *Layer
-	viewHeight int16
-	viewWidth  int16
-	flexGrow   float32
-	margin     [4]int16
+	layer       *Layer
+	viewHeight  int16
+	viewWidth   int16
+	flexGrow    float32
+	margin      [4]int16
+	flexGrowPtr *float32
 }
 
 // LayerView displays a scrollable, pre-rendered layer within the view tree.
@@ -1083,9 +1243,18 @@ func (l LayerViewC) ViewWidth(w int16) LayerViewC {
 	return l
 }
 
-// Grow sets the flex grow factor.
-func (l LayerViewC) Grow(g float32) LayerViewC {
-	l.flexGrow = g
+// Grow sets the flex grow factor. Accepts float32, float64, int, or *float32 for dynamic values.
+func (l LayerViewC) Grow(g any) LayerViewC {
+	switch val := g.(type) {
+	case float32:
+		l.flexGrow = val
+	case float64:
+		l.flexGrow = float32(val)
+	case int:
+		l.flexGrow = float32(val)
+	case *float32:
+		l.flexGrowPtr = val
+	}
 	return l
 }
 
@@ -1478,6 +1647,7 @@ type TabsC struct {
 	activeStyle   Style
 	inactiveStyle Style
 	margin        [4]int16
+	gapPtr        *int8
 }
 
 // Tabs creates a row of selectable tab headers.
@@ -1492,9 +1662,16 @@ func (t TabsC) Kind(s TabsStyle) TabsC {
 	return t
 }
 
-// Gap sets the spacing between children.
-func (t TabsC) Gap(g int8) TabsC {
-	t.gap = g
+// Gap sets the spacing between children. Accepts int8, int, or *int8 for dynamic values.
+func (t TabsC) Gap(g any) TabsC {
+	switch val := g.(type) {
+	case int8:
+		t.gap = val
+	case int:
+		t.gap = int8(val)
+	case *int8:
+		t.gapPtr = val
+	}
 	return t
 }
 
@@ -1756,6 +1933,7 @@ type RadioC struct {
 	gap              int8
 	horizontal       bool
 	declaredBindings []binding
+	gapPtr           *int8
 
 	// focus
 	focused bool
@@ -1816,9 +1994,16 @@ func (r *RadioC) MarginTRBL(t, ri, b, l int16) *RadioC {
 	return r
 }
 
-// Gap sets the spacing between children.
-func (r *RadioC) Gap(g int8) *RadioC {
-	r.gap = g
+// Gap sets the spacing between children. Accepts int8, int, or *int8 for dynamic values.
+func (r *RadioC) Gap(g any) *RadioC {
+	switch val := g.(type) {
+	case int8:
+		r.gap = val
+	case int:
+		r.gap = int8(val)
+	case *int8:
+		r.gapPtr = val
+	}
 	return r
 }
 
@@ -1908,6 +2093,7 @@ type CheckListC[T any] struct {
 	gap              int8
 	declaredBindings []binding
 	cached           *SelectionList
+	gapPtr           *int8
 }
 
 // CheckList creates a navigable checklist from a bound slice.
@@ -1987,9 +2173,16 @@ func (c *CheckListC[T]) MarginTRBL(t, r, b, l int16) *CheckListC[T] {
 	return c
 }
 
-// Gap sets the spacing between children.
-func (c *CheckListC[T]) Gap(g int8) *CheckListC[T] {
-	c.gap = g
+// Gap sets the spacing between children. Accepts int8, int, or *int8 for dynamic values.
+func (c *CheckListC[T]) Gap(g any) *CheckListC[T] {
+	switch val := g.(type) {
+	case int8:
+		c.gap = val
+	case int:
+		c.gap = int8(val)
+	case *int8:
+		c.gapPtr = val
+	}
 	return c
 }
 
@@ -2191,6 +2384,7 @@ type InputC struct {
 	mask        rune
 	style       Style
 	declaredTIB *textInputBinding
+	widthPtr    *int16
 
 	// value binding
 	boundValue *string
@@ -2256,9 +2450,16 @@ func (i *InputC) Placeholder(p string) *InputC {
 	return i
 }
 
-// Width sets the input width.
-func (i *InputC) Width(w int16) *InputC {
-	i.width = int(w)
+// Width sets the input width. Accepts int16, int, or *int16 for dynamic values.
+func (i *InputC) Width(w any) *InputC {
+	switch val := w.(type) {
+	case int16:
+		i.width = int(val)
+	case int:
+		i.width = val
+	case *int16:
+		i.widthPtr = val
+	}
 	return i
 }
 

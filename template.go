@@ -216,8 +216,58 @@ type Op struct {
 // OpDyn holds pointer overrides for shared layout properties.
 // only allocated for ops that use dynamic values (e.g. Height(&h)).
 type OpDyn struct {
-	Height *int16
-	Width  *int16
+	Height       *int16
+	Width        *int16
+	FlexGrow     *float32
+	PercentWidth *float32
+	Gap          *int8
+}
+
+// resolver methods — inlinable nil-check + deref, zero cost when Dyn is nil
+
+func (op *Op) height() int16 {
+	if op.Dyn != nil {
+		if p := op.Dyn.Height; p != nil {
+			return *p
+		}
+	}
+	return op.Height
+}
+
+func (op *Op) width() int16 {
+	if op.Dyn != nil {
+		if p := op.Dyn.Width; p != nil {
+			return *p
+		}
+	}
+	return op.Width
+}
+
+func (op *Op) flexGrow() float32 {
+	if op.Dyn != nil {
+		if p := op.Dyn.FlexGrow; p != nil {
+			return *p
+		}
+	}
+	return op.FlexGrow
+}
+
+func (op *Op) percentWidth() float32 {
+	if op.Dyn != nil {
+		if p := op.Dyn.PercentWidth; p != nil {
+			return *p
+		}
+	}
+	return op.PercentWidth
+}
+
+func (op *Op) gap() int8 {
+	if op.Dyn != nil {
+		if p := op.Dyn.Gap; p != nil {
+			return *p
+		}
+	}
+	return op.Gap
 }
 
 // opSparkline holds sparkline-specific data.
@@ -1152,6 +1202,15 @@ func (t *Template) compileContainer(children []any, gap int8, isRow bool, f flex
 		Margin:       margin,
 	}
 
+	if f.widthPtr != nil || f.heightPtr != nil || f.flexGrowPtr != nil || f.percentWidthPtr != nil {
+		op.Dyn = &OpDyn{
+			Width:        f.widthPtr,
+			Height:       f.heightPtr,
+			FlexGrow:     f.flexGrowPtr,
+			PercentWidth: f.percentWidthPtr,
+		}
+	}
+
 	idx := t.addOp(op, depth)
 
 	// Track child range
@@ -1172,7 +1231,7 @@ func (t *Template) compileContainer(children []any, gap int8, isRow bool, f flex
 		if childOp.Parent != idx {
 			continue
 		}
-		if childOp.Width > 0 || childOp.ContentSized {
+		if childOp.Width > 0 || (childOp.Dyn != nil && childOp.Dyn.Width != nil) || childOp.ContentSized {
 			t.ops[idx].ContentSized = true
 			break
 		}
@@ -1367,7 +1426,7 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 		v.children,
 		v.gap,
 		false, // isRow
-		flex{percentWidth: v.percentWidth, width: v.width, height: v.height, flexGrow: v.flexGrow, fitContent: v.fitContent},
+		flex{percentWidth: v.percentWidth, width: v.width, height: v.height, flexGrow: v.flexGrow, fitContent: v.fitContent, widthPtr: v.widthPtr, heightPtr: v.heightPtr, percentWidthPtr: v.percentWidthPtr, flexGrowPtr: v.flexGrowPtr},
 		v.border,
 		v.title,
 		v.borderFG,
@@ -1383,6 +1442,12 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 	if v.nodeRef != nil {
 		t.ops[idx].NodeRef = v.nodeRef
 	}
+	if v.gapPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Gap = v.gapPtr
+	}
 	return idx
 }
 
@@ -1391,7 +1456,7 @@ func (t *Template) compileHBoxC(v HBoxC, parent int16, depth int, elemBase unsaf
 		v.children,
 		v.gap,
 		true, // isRow
-		flex{percentWidth: v.percentWidth, width: v.width, height: v.height, flexGrow: v.flexGrow, fitContent: v.fitContent},
+		flex{percentWidth: v.percentWidth, width: v.width, height: v.height, flexGrow: v.flexGrow, fitContent: v.fitContent, widthPtr: v.widthPtr, heightPtr: v.heightPtr, percentWidthPtr: v.percentWidthPtr, flexGrowPtr: v.flexGrowPtr},
 		v.border,
 		v.title,
 		v.borderFG,
@@ -1406,6 +1471,12 @@ func (t *Template) compileHBoxC(v HBoxC, parent int16, depth int, elemBase unsaf
 	)
 	if v.nodeRef != nil {
 		t.ops[idx].NodeRef = v.nodeRef
+	}
+	if v.gapPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Gap = v.gapPtr
 	}
 	return idx
 }
@@ -1430,22 +1501,29 @@ func (t *Template) compileTextC(v TextC, parent int16, depth int, elemBase unsaf
 		ext.fn = val
 	}
 
-	return t.addOp(Op{
+	idx := t.addOp(Op{
 		Kind:   OpText,
 		Parent: parent,
 		Width:  v.width,
 		Margin: v.style.margin,
 		Ext:    ext,
 	}, depth)
+	if v.widthPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Width = v.widthPtr
+	}
+	return idx
 }
 
 func (t *Template) compileSpacerC(v SpacerC, parent int16, depth int) int16 {
 	grow := v.flexGrow
-	if grow == 0 && v.width == 0 && v.height == 0 {
+	if grow == 0 && v.width == 0 && v.height == 0 && v.widthPtr == nil && v.heightPtr == nil && v.flexGrowPtr == nil {
 		grow = 1
 	}
 	ext := &opRule{char: v.char, style: v.style}
-	return t.addOp(Op{
+	idx := t.addOp(Op{
 		Kind:     OpSpacer,
 		Parent:   parent,
 		Width:    v.width,
@@ -1454,6 +1532,21 @@ func (t *Template) compileSpacerC(v SpacerC, parent int16, depth int) int16 {
 		Margin:   v.style.margin,
 		Ext:      ext,
 	}, depth)
+	if v.widthPtr != nil || v.heightPtr != nil || v.flexGrowPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		if v.widthPtr != nil {
+			t.ops[idx].Dyn.Width = v.widthPtr
+		}
+		if v.heightPtr != nil {
+			t.ops[idx].Dyn.Height = v.heightPtr
+		}
+		if v.flexGrowPtr != nil {
+			t.ops[idx].Dyn.FlexGrow = v.flexGrowPtr
+		}
+	}
+	return idx
 }
 
 func (t *Template) compileHRuleC(v HRuleC, parent int16, depth int) int16 {
@@ -1476,13 +1569,20 @@ func (t *Template) compileVRuleC(v VRuleC, parent int16, depth int) int16 {
 		char = '│'
 	}
 	ext := &opRule{char: char, style: v.style, extend: v.extend}
-	return t.addOp(Op{
+	idx := t.addOp(Op{
 		Kind:   OpVRule,
 		Parent: parent,
 		Height: v.height,
 		Margin: v.style.margin,
 		Ext:    ext,
 	}, depth)
+	if v.heightPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Height = v.heightPtr
+	}
+	return idx
 }
 
 func (t *Template) compileProgressC(v ProgressC, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
@@ -1507,13 +1607,20 @@ func (t *Template) compileProgressC(v ProgressC, parent int16, depth int, elemBa
 		}
 	}
 
-	return t.addOp(Op{
+	idx := t.addOp(Op{
 		Kind:   OpProgress,
 		Parent: parent,
 		Width:  width,
 		Margin: v.style.margin,
 		Ext:    ext,
 	}, depth)
+	if v.widthPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Width = v.widthPtr
+	}
+	return idx
 }
 
 func (t *Template) compileSpinnerC(v SpinnerC, parent int16, depth int) int16 {
@@ -1569,13 +1676,20 @@ func (t *Template) compileLeaderC(v LeaderC, parent int16, depth int) int16 {
 		ext.value = fmt.Sprintf("%v", val)
 	}
 
-	return t.addOp(Op{
+	idx := t.addOp(Op{
 		Kind:   OpLeader,
 		Parent: parent,
 		Width:  v.width,
 		Margin: v.style.margin,
 		Ext:    ext,
 	}, depth)
+	if v.widthPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Width = v.widthPtr
+	}
+	return idx
 }
 
 func (t *Template) compileCounterC(v counterC, parent int16, depth int) int16 {
@@ -1612,7 +1726,19 @@ func (t *Template) compileSparklineC(v SparklineC, parent int16, depth int) int1
 		Margin: v.style.margin,
 		Ext:    ext,
 	}
-	return t.addOp(op, depth)
+	idx := t.addOp(op, depth)
+	if v.widthPtr != nil || v.heightPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		if v.widthPtr != nil {
+			t.ops[idx].Dyn.Width = v.widthPtr
+		}
+		if v.heightPtr != nil {
+			t.ops[idx].Dyn.Height = v.heightPtr
+		}
+	}
+	return idx
 }
 
 func (t *Template) compileJumpC(v JumpC, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
@@ -1635,13 +1761,20 @@ func (t *Template) compileJumpC(v JumpC, parent int16, depth int, elemBase unsaf
 
 func (t *Template) compileLayerViewC(v LayerViewC, parent int16, depth int) int16 {
 	ext := &opLayer{ptr: v.layer, width: v.viewWidth, height: v.viewHeight}
-	return t.addOp(Op{
+	idx := t.addOp(Op{
 		Kind:     OpLayer,
 		Parent:   parent,
 		FlexGrow: v.flexGrow,
 		Margin:   v.margin,
 		Ext:      ext,
 	}, depth)
+	if v.flexGrowPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.FlexGrow = v.flexGrowPtr
+	}
+	return idx
 }
 
 func (t *Template) compileOverlayC(v OverlayC, parent int16, depth int) int16 {
@@ -1687,12 +1820,20 @@ func (t *Template) compileTabsC(v TabsC, parent int16, depth int) int16 {
 		activeStyle:   v.activeStyle,
 		inactiveStyle: v.inactiveStyle,
 	}
-	return t.addOp(Op{
+	idx := t.addOp(Op{
 		Kind:   OpTabs,
 		Parent: parent,
+		Gap:    v.gap,
 		Margin: v.margin,
 		Ext:    ext,
 	}, depth)
+	if v.gapPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Gap = v.gapPtr
+	}
+	return idx
 }
 
 func (t *Template) compileScrollbarC(v ScrollbarC, parent int16, depth int) int16 {
@@ -1819,12 +1960,20 @@ func (t *Template) compileAutoTableReactive(v AutoTableC, rv reflect.Value, pare
 		scroll:   v.scroll,
 	}
 
-	return t.addOp(Op{
+	idx := t.addOp(Op{
 		Kind:   OpAutoTable,
 		Parent: parent,
+		Gap:    v.gap,
 		Margin: v.margin,
 		Ext:    ext,
 	}, depth)
+	if v.gapPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Gap = v.gapPtr
+	}
+	return idx
 }
 
 // alignOffset returns the x offset needed to align text within the given width.
@@ -1963,7 +2112,14 @@ func (t *Template) compileAutoTableStatic(v AutoTableC, rv reflect.Value, parent
 		}
 		headerCells = append(headerCells, Text(h).Width(int16(widths[i])).Style(hdrStyle))
 	}
-	rows = append(rows, HBox.Gap(v.gap)(headerCells...))
+	// use pointer gap if set, otherwise static value
+	var tableGap any
+	if v.gapPtr != nil {
+		tableGap = v.gapPtr
+	} else {
+		tableGap = v.gap
+	}
+	rows = append(rows, HBox.Gap(tableGap)(headerCells...))
 
 	for i := 0; i < rv.Len(); i++ {
 		elem := rv.Index(i)
@@ -2000,9 +2156,9 @@ func (t *Template) compileAutoTableStatic(v AutoTableC, rv reflect.Value, parent
 			cells = append(cells, Text(str).Width(int16(widths[j])).Style(cellStyle))
 		}
 
-		row := HBox.Gap(v.gap)
+		row := HBox.Gap(tableGap)
 		if isAlt && rowStyle.BG.Mode != ColorDefault {
-			row = HBox.Gap(v.gap).Fill(rowStyle.BG)
+			row = HBox.Gap(tableGap).Fill(rowStyle.BG)
 		}
 		rows = append(rows, row(cells...))
 	}
@@ -2051,12 +2207,20 @@ func (t *Template) compileRadioC(v *RadioC, parent int16, depth int) int16 {
 		items = append(items, item)
 	}
 
+	// use pointer gap if set, otherwise static value
+	var gap any
+	if v.gapPtr != nil {
+		gap = v.gapPtr
+	} else {
+		gap = v.gap
+	}
+
 	if v.horizontal {
-		hbox := HBox.Gap(v.gap)(items...)
+		hbox := HBox.Gap(gap)(items...)
 		hbox.margin = v.style.margin
 		return t.compileHBoxC(hbox, parent, depth, nil, 0)
 	}
-	vbox := VBox.Gap(v.gap)(items...)
+	vbox := VBox.Gap(gap)(items...)
 	vbox.margin = v.style.margin
 	return t.compileVBoxC(vbox, parent, depth, nil, 0)
 }
@@ -2064,7 +2228,14 @@ func (t *Template) compileRadioC(v *RadioC, parent int16, depth int) int16 {
 func (t *Template) compileInputC(v *InputC, parent int16, depth int) int16 {
 	// Convert to TextInput and compile
 	ti := v.toTextInput()
-	return t.compile(ti, parent, depth, nil, 0)
+	idx := t.compile(ti, parent, depth, nil, 0)
+	if v.widthPtr != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Width = v.widthPtr
+	}
+	return idx
 }
 
 // Execute runs all three phases and renders to the buffer.
@@ -2130,8 +2301,8 @@ func (t *Template) computeIntrinsicWidth(idx int16) int16 {
 	op := &t.ops[idx]
 
 	// If this op has an explicit width, use it
-	if op.Width > 0 {
-		return op.Width
+	if w := op.width(); w > 0 {
+		return w
 	}
 
 	// For containers, compute from children
@@ -2160,8 +2331,8 @@ func (t *Template) computeIntrinsicWidth(idx int16) int16 {
 		}
 
 		// Add gaps for HBox
-		if op.IsRow && childCount > 1 && op.Gap > 0 {
-			intrinsicW += int16(op.Gap) * (childCount - 1)
+		if g := op.gap(); op.IsRow && childCount > 1 && g > 0 {
+			intrinsicW += int16(g) * (childCount - 1)
 		}
 
 		// Add border
@@ -2187,14 +2358,14 @@ func (t *Template) computeIntrinsicWidth(idx int16) int16 {
 func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.Pointer) {
 	switch op.Kind {
 	case OpText:
-		if op.Width > 0 {
-			geom.W = op.Width
+		if w := op.width(); w > 0 {
+			geom.W = w
 		} else {
 			geom.W = op.Ext.(*opText).textWidth(elemBase)
 		}
 
 	case OpProgress:
-		geom.W = op.Width
+		geom.W = op.width()
 
 	case OpCounter:
 		ext := op.Ext.(*opCounter)
@@ -2206,7 +2377,7 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 		geom.W = int16(len(b))
 
 	case OpLeader:
-		geom.W = op.Width
+		geom.W = op.width()
 		if geom.W == 0 {
 			geom.W = 20
 		}
@@ -2227,7 +2398,7 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 		geom.W = int16(totalW)
 
 	case OpSparkline:
-		geom.W = op.Width
+		geom.W = op.width()
 		if geom.W == 0 {
 			if availW > 0 {
 				geom.W = availW
@@ -2243,7 +2414,7 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 		geom.W = 1 // single column
 
 	case OpSpacer:
-		geom.W = op.Width // 0 = fill available
+		geom.W = op.width() // 0 = fill available
 
 	case OpSpinner:
 		geom.W = 1 // single character width
@@ -2251,8 +2422,8 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 	case OpScrollbar:
 		ext := op.Ext.(*opScrollbar)
 		if ext.horizontal {
-			if op.Width > 0 {
-				geom.W = op.Width
+			if w := op.width(); w > 0 {
+				geom.W = w
 			} else {
 				geom.W = availW
 			}
@@ -2323,8 +2494,8 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 
 	case OpTextInput:
 		// TextInput uses explicit width or fills available
-		if op.Width > 0 {
-			geom.W = op.Width
+		if w := op.width(); w > 0 {
+			geom.W = w
 		} else {
 			geom.W = availW
 		}
@@ -2364,10 +2535,10 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 		}
 
 	case OpContainer:
-		if op.Width > 0 {
-			geom.W = op.Width
-		} else if op.PercentWidth > 0 {
-			geom.W = int16(float32(availW) * op.PercentWidth)
+		if w := op.width(); w > 0 {
+			geom.W = w
+		} else if pw := op.percentWidth(); pw > 0 {
+			geom.W = int16(float32(availW) * pw)
 		} else {
 			geom.W = availW
 		}
@@ -2457,12 +2628,12 @@ func (t *Template) distributeHBoxChildWidths(idx int16, op *Op, availW int16, el
 			effectiveOp = contentOp
 		}
 
-		if effectiveOp.FlexGrow > 0 {
+		if fg := effectiveOp.flexGrow(); fg > 0 {
 			// Explicit flex child - defer to pass 2
-			totalFlex += effectiveOp.FlexGrow
+			totalFlex += fg
 			flexChildren = append(flexChildren, i)
-			flexGrowValues = append(flexGrowValues, effectiveOp.FlexGrow)
-		} else if !effectiveOp.ContentSized && (effectiveOp.Kind == OpContainer || effectiveOp.Kind == OpJump) && effectiveOp.Width == 0 && effectiveOp.PercentWidth == 0 {
+			flexGrowValues = append(flexGrowValues, fg)
+		} else if !effectiveOp.ContentSized && (effectiveOp.Kind == OpContainer || effectiveOp.Kind == OpJump) && effectiveOp.width() == 0 && effectiveOp.percentWidth() == 0 {
 			// Container/Jump without explicit width or fixed-content children - implicit flex
 			implicitFlexChildren = append(implicitFlexChildren, i)
 		} else {
@@ -2483,8 +2654,8 @@ func (t *Template) distributeHBoxChildWidths(idx int16, op *Op, availW int16, el
 	// Note: we track fixedWidthCount during the loop above to avoid double-counting
 	// flex children that might have non-zero W from a previous render
 	childCount := fixedWidthCount + int16(len(flexChildren)) + int16(len(implicitFlexChildren))
-	if childCount > 1 && op.Gap > 0 {
-		usedW += int16(op.Gap) * (childCount - 1)
+	if g := op.gap(); childCount > 1 && g > 0 {
+		usedW += int16(g) * (childCount - 1)
 	}
 
 	// Pass 2: Distribute remaining width to flex children
@@ -2577,7 +2748,7 @@ func (t *Template) annotateHRuleExtensions(hboxIdx int16, hboxOp *Op, availW int
 		w := t.geom[i].W
 		children = append(children, childInfo{idx: i, xStart: cursor})
 		if w > 0 {
-			cursor += w + int16(hboxOp.Gap)
+			cursor += w + int16(hboxOp.gap())
 		}
 	}
 
@@ -2826,7 +2997,7 @@ func (t *Template) layout(_ int16) {
 				}
 
 			case OpSparkline:
-				geom.H = op.Height
+				geom.H = op.height()
 				if geom.H <= 0 {
 					geom.H = 1
 				}
@@ -2838,7 +3009,7 @@ func (t *Template) layout(_ int16) {
 				geom.H = 1 // default height (will be stretched by flex)
 
 			case OpSpacer:
-				geom.H = op.Height
+				geom.H = op.height()
 
 			case OpSpinner:
 				geom.H = 1 // single line
@@ -2848,8 +3019,8 @@ func (t *Template) layout(_ int16) {
 				if ext.horizontal {
 					geom.H = 1
 				} else {
-					if op.Height > 0 {
-						geom.H = op.Height
+					if h := op.height(); h > 0 {
+						geom.H = h
 					} else {
 						geom.H = 1
 					}
@@ -2909,7 +3080,7 @@ func (t *Template) layout(_ int16) {
 				ext := op.Ext.(*opLayer)
 				if ext.height > 0 {
 					geom.H = ext.height
-				} else if op.FlexGrow > 0 {
+				} else if op.flexGrow() > 0 {
 					geom.H = 1
 				} else if ext.ptr != nil && ext.ptr.viewHeight > 0 {
 					geom.H = int16(ext.ptr.viewHeight)
@@ -3039,8 +3210,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 				}
 				if childIfExt.thenTmpl != nil && condTrue {
 					// Add gap before this child if needed
-					if needGap && op.Gap > 0 {
-						cursor += int16(op.Gap)
+					if g := op.gap(); needGap && g > 0 {
+						cursor += int16(g)
 					}
 					childIfExt.thenTmpl.elemBase = t.elemBase
 					childIfExt.thenTmpl.distributeWidths(ifWidth, t.elemBase)
@@ -3060,8 +3231,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 					needGap = true // Next visible child needs gap
 				} else if childIfExt.elseTmpl != nil && !condTrue {
 					// Add gap before this child if needed
-					if needGap && op.Gap > 0 {
-						cursor += int16(op.Gap)
+					if g := op.gap(); needGap && g > 0 {
+						cursor += int16(g)
 					}
 					childIfExt.elseTmpl.elemBase = t.elemBase
 					childIfExt.elseTmpl.distributeWidths(ifWidth, t.elemBase)
@@ -3083,8 +3254,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 
 			case OpForEach:
 				// Add gap before this child if needed
-				if needGap && op.Gap > 0 {
-					cursor += int16(op.Gap)
+				if g := op.gap(); needGap && g > 0 {
+					cursor += int16(g)
 				}
 				h, w := t.layoutForEach(i, childOp, availW)
 				t.geom[i].LocalX = contentOffX + cursor
@@ -3122,8 +3293,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 					}
 				}
 				if maxCaseW > 0 {
-					if needGap && op.Gap > 0 {
-						cursor += int16(op.Gap)
+					if g := op.gap(); needGap && g > 0 {
+						cursor += int16(g)
 					}
 					t.geom[i].LocalX = contentOffX + cursor
 					t.geom[i].LocalY = contentOffY
@@ -3139,8 +3310,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 			default:
 				childGeom := &t.geom[i]
 				// Add gap before this child if needed
-				if needGap && op.Gap > 0 && childGeom.W > 0 {
-					cursor += int16(op.Gap)
+				if g := op.gap(); needGap && g > 0 && childGeom.W > 0 {
+					cursor += int16(g)
 				}
 				childGeom.LocalX = contentOffX + cursor
 				childGeom.LocalY = contentOffY
@@ -3171,8 +3342,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 			}
 
 			// Handle gap
-			if !firstChild && op.Gap > 0 {
-				cursor += int16(op.Gap)
+			if g := op.gap(); !firstChild && g > 0 {
+				cursor += int16(g)
 			}
 			firstChild = false
 
@@ -3263,8 +3434,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 	geom.ContentH = geom.H
 
 	// Explicit height overrides
-	if op.Height > 0 {
-		geom.H = op.Height
+	if h := op.height(); h > 0 {
+		geom.H = h
 	}
 }
 
@@ -3283,7 +3454,7 @@ func (t *Template) distributeFlexGrow(rootH int16) {
 			geom := &t.geom[idx]
 			if op.Kind == OpContainer && op.Parent == -1 {
 				// Root container fills screen height (unless explicit height or FitContent)
-				if op.Height == 0 && !op.FitContent {
+				if op.height() == 0 && !op.FitContent {
 					geom.H = rootH
 				}
 			}
@@ -3327,7 +3498,7 @@ func (t *Template) stretchRowChildren(idx int16, op *Op) {
 
 		// Stretch containers, layers, and VRule to fill height (unless they have explicit height)
 		if childOp.Kind == OpContainer || childOp.Kind == OpLayer || childOp.Kind == OpVRule {
-			if childOp.Height == 0 && childGeom.H < availH {
+			if childOp.height() == 0 && childGeom.H < availH {
 				childGeom.H = availH
 			}
 		}
@@ -3359,7 +3530,7 @@ func (t *Template) stretchIfContent(op *Op, newH int16) {
 	// Stretch root of sub-template
 	rootOp := &tmpl.ops[0]
 	if rootOp.Kind == OpContainer || rootOp.Kind == OpLayer {
-		if rootOp.Height == 0 {
+		if rootOp.height() == 0 {
 			tmpl.geom[0].H = newH
 		}
 	}
@@ -3373,7 +3544,7 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 	// If this container is a flex child, it already has its height set by parent's distribution
 	// Use that height, not the parent's full height
 	var availH int16
-	if op.FlexGrow > 0 && geom.H > 0 {
+	if op.flexGrow() > 0 && geom.H > 0 {
 		// This container is a flex child - use its own height (already computed)
 		availH = geom.H - op.marginV()
 		if op.Border.Horizontal != 0 {
@@ -3394,8 +3565,8 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 	}
 
 	// If this container has explicit height, use that
-	if op.Height > 0 {
-		availH = op.Height - op.marginV()
+	if h := op.height(); h > 0 {
+		availH = h - op.marginV()
 		if op.Border.Horizontal != 0 {
 			availH -= 2
 		}
@@ -3418,10 +3589,10 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 		childGeom := &t.geom[i]
 
 		// Check for direct flex child (container, layer or spacer)
-		if (childOp.Kind == OpContainer || childOp.Kind == OpLayer || childOp.Kind == OpSpacer) && childOp.FlexGrow > 0 {
-			totalFlex += childOp.FlexGrow
+		if fg := childOp.flexGrow(); (childOp.Kind == OpContainer || childOp.Kind == OpLayer || childOp.Kind == OpSpacer) && fg > 0 {
+			totalFlex += fg
 			flexChildren = append(flexChildren, i)
-			flexGrowValues = append(flexGrowValues, childOp.FlexGrow)
+			flexGrowValues = append(flexGrowValues, fg)
 			usedH += childGeom.ContentH // Use content height for flex children
 			continue
 		}
@@ -3444,8 +3615,8 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 	t.flexScratchGrow = flexGrowValues
 
 	// Add gaps to used height
-	if childCount > 1 && op.Gap > 0 {
-		usedH += int16(op.Gap) * (childCount - 1)
+	if g := op.gap(); childCount > 1 && g > 0 {
+		usedH += int16(g) * (childCount - 1)
 	}
 
 	// Distribute remaining space (handles both expansion and shrinkage)
@@ -3483,8 +3654,8 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 				continue
 			}
 
-			if !firstChild && op.Gap > 0 {
-				cursor += int16(op.Gap)
+			if g := op.gap(); !firstChild && g > 0 {
+				cursor += int16(g)
 			}
 			firstChild = false
 
@@ -3528,7 +3699,7 @@ func (t *Template) propagateFlexToIf(op *Op, newH int16) {
 
 	// If root is a flex container, update its height and redistribute
 	rootOp := &tmpl.ops[0]
-	if rootOp.Kind == OpContainer && rootOp.FlexGrow > 0 {
+	if rootOp.Kind == OpContainer && rootOp.flexGrow() > 0 {
 		tmpl.geom[0].H = newH
 		tmpl.distributeFlexGrow(newH)
 	}
@@ -3554,8 +3725,8 @@ func (t *Template) getIfFlexGrow(op *Op) float32 {
 
 	// Check if root op of the branch is a Container with FlexGrow
 	rootOp := &tmpl.ops[0]
-	if rootOp.Kind == OpContainer && rootOp.FlexGrow > 0 {
-		return rootOp.FlexGrow
+	if fg := rootOp.flexGrow(); rootOp.Kind == OpContainer && fg > 0 {
+		return fg
 	}
 
 	return 0
@@ -3765,7 +3936,7 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 		text := applyTransform(raw, style.Transform)
 		x := int(absX)
 		if style.Align != AlignLeft {
-			alignW := op.Width
+			alignW := op.width()
 			if alignW == 0 {
 				alignW = maxW
 			}
@@ -3777,7 +3948,7 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 		ext := op.Ext.(*opProgress)
 		ratio := float32(ext.resolve(t.elemBase)) / 100.0
 		style := t.effectiveStyle(ext.style)
-		buf.WriteProgressBar(int(absX), int(absY), int(op.Width), ratio, style)
+		buf.WriteProgressBar(int(absX), int(absY), int(op.width()), ratio, style)
 
 	case OpRichText:
 		ext := op.Ext.(*opRichText)
@@ -3788,7 +3959,7 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 
 	case OpLeader:
 		ext := op.Ext.(*opLeader)
-		width := int(op.Width)
+		width := int(op.width())
 		if width == 0 {
 			width = int(maxW)
 		}
@@ -4227,7 +4398,7 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 		ext := op.Ext.(*opProgress)
 		ratio := float32(ext.resolve(elemBase)) / 100.0
 		style := sub.effectiveStyle(ext.style)
-		buf.WriteProgressBar(int(absX), int(absY), int(op.Width), ratio, style)
+		buf.WriteProgressBar(int(absX), int(absY), int(op.width()), ratio, style)
 
 	case OpRichText:
 		ext := op.Ext.(*opRichText)
@@ -4238,7 +4409,7 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 
 	case OpLeader:
 		ext := op.Ext.(*opLeader)
-		width := int(op.Width)
+		width := int(op.width())
 		if width == 0 {
 			width = int(maxW)
 		}
@@ -4962,8 +5133,8 @@ func (t *Template) renderOverlay(buf *Buffer, op *Op, screenW, screenH int16) {
 	childTmpl := ext.childTmpl
 
 	// Determine overlay dimensions
-	overlayW := op.Width
-	overlayH := op.Height
+	overlayW := op.width()
+	overlayH := op.height()
 
 	if overlayW == 0 || overlayH == 0 {
 		// Calculate natural size from content

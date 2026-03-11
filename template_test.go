@@ -377,6 +377,198 @@ func TestV2IfFalse(t *testing.T) {
 	}
 }
 
+func TestDynamicProperties(t *testing.T) {
+	t.Run("container height ptr", func(t *testing.T) {
+		h := int16(20)
+		tmpl := Build(VBox.Height(&h)(Text("A"), VBox.Grow(1)(Text("B"))))
+		buf := NewBuffer(40, 30)
+
+		tmpl.Execute(buf, 40, 30)
+		if got := tmpl.geom[0].H; got != 20 {
+			t.Errorf("initial: got H=%d, want 20", got)
+		}
+
+		h = 10
+		buf.Clear()
+		tmpl.Execute(buf, 40, 30)
+		if got := tmpl.geom[0].H; got != 10 {
+			t.Errorf("after change: got H=%d, want 10", got)
+		}
+	})
+
+	t.Run("container width ptr", func(t *testing.T) {
+		w := int16(10)
+		tmpl := Build(HBox(VBox.Width(&w)(Text("X")), VBox.Grow(1)(Text("Y"))))
+		buf := NewBuffer(40, 5)
+
+		tmpl.Execute(buf, 40, 5)
+		if got := tmpl.geom[1].W; got != 10 {
+			t.Errorf("initial: got W=%d, want 10", got)
+		}
+
+		w = 25
+		buf.Clear()
+		tmpl.Execute(buf, 40, 5)
+		if got := tmpl.geom[1].W; got != 25 {
+			t.Errorf("after change: got W=%d, want 25", got)
+		}
+	})
+
+	t.Run("container grow ptr", func(t *testing.T) {
+		g1 := float32(1)
+		g2 := float32(1)
+		tmpl := Build(HBox(VBox.Grow(&g1)(Text("A")), VBox.Grow(&g2)(Text("B"))))
+		buf := NewBuffer(100, 5)
+
+		tmpl.Execute(buf, 100, 5)
+		if got := tmpl.geom[1].W; got != 50 {
+			t.Errorf("equal grow: child1 W=%d, want 50", got)
+		}
+
+		// shift to 3:1 ratio
+		g1 = 3
+		buf.Clear()
+		tmpl.Execute(buf, 100, 5)
+		if got := tmpl.geom[1].W; got != 75 {
+			t.Errorf("3:1 grow: child1 W=%d, want 75", got)
+		}
+	})
+
+	t.Run("container widthpct ptr", func(t *testing.T) {
+		pct := float32(0.5)
+		tmpl := Build(HBox(VBox.WidthPct(&pct)(Text("A")), VBox.Grow(1)(Text("B"))))
+		buf := NewBuffer(100, 5)
+
+		tmpl.Execute(buf, 100, 5)
+		if got := tmpl.geom[1].W; got != 50 {
+			t.Errorf("50%%: got W=%d, want 50", got)
+		}
+
+		pct = 0.25
+		buf.Clear()
+		tmpl.Execute(buf, 100, 5)
+		if got := tmpl.geom[1].W; got != 25 {
+			t.Errorf("25%%: got W=%d, want 25", got)
+		}
+	})
+
+	t.Run("container gap ptr", func(t *testing.T) {
+		gap := int8(0)
+		tmpl := Build(VBox.Gap(&gap)(Text("A"), Text("B"), Text("C")))
+		buf := NewBuffer(40, 20)
+
+		tmpl.Execute(buf, 40, 20)
+		if got := buf.GetLine(0); got != "A" {
+			t.Errorf("gap=0 line0: got %q, want %q", got, "A")
+		}
+		if got := buf.GetLine(1); got != "B" {
+			t.Errorf("gap=0 line1: got %q, want %q", got, "B")
+		}
+
+		gap = 2
+		buf.Clear()
+		tmpl.Execute(buf, 40, 20)
+		if got := buf.GetLine(0); got != "A" {
+			t.Errorf("gap=2 line0: got %q, want %q", got, "A")
+		}
+		// gap of 2 means B should be on line 3
+		if got := buf.GetLine(3); got != "B" {
+			t.Errorf("gap=2 line3: got %q, want %q", got, "B")
+		}
+	})
+
+	t.Run("progress width ptr", func(t *testing.T) {
+		w := int16(20)
+		val := 50
+		tmpl := Build(VBox(Progress(&val).Width(&w)))
+		buf := NewBuffer(80, 3)
+
+		tmpl.Execute(buf, 80, 3)
+		if got := tmpl.geom[1].W; got != 20 {
+			t.Errorf("initial: got W=%d, want 20", got)
+		}
+
+		w = 40
+		buf.Clear()
+		tmpl.Execute(buf, 80, 3)
+		if got := tmpl.geom[1].W; got != 40 {
+			t.Errorf("after change: got W=%d, want 40", got)
+		}
+	})
+
+	t.Run("sparkline height ptr", func(t *testing.T) {
+		h := int16(1)
+		vals := []float64{1, 2, 3, 4, 5}
+		tmpl := Build(VBox(Sparkline(vals).Width(20).Height(&h)))
+		buf := NewBuffer(40, 10)
+
+		tmpl.Execute(buf, 40, 10)
+		if got := tmpl.geom[1].H; got != 1 {
+			t.Errorf("initial: got H=%d, want 1", got)
+		}
+
+		h = 4
+		buf.Clear()
+		tmpl.Execute(buf, 40, 10)
+		if got := tmpl.geom[1].H; got != 4 {
+			t.Errorf("after change: got H=%d, want 4", got)
+		}
+	})
+
+	t.Run("spacer grow ptr", func(t *testing.T) {
+		g := float32(1)
+		tmpl := Build(VBox.Height(20)(Text("top"), Space().Grow(&g), Text("bot")))
+		buf := NewBuffer(40, 20)
+
+		tmpl.Execute(buf, 40, 20)
+		spacerGeom := tmpl.geom[2] // spacer is child index 2
+		if spacerGeom.H < 10 {
+			t.Errorf("spacer should fill remaining space, got H=%d", spacerGeom.H)
+		}
+	})
+
+	t.Run("int literal accepted", func(t *testing.T) {
+		// untyped int should work via type switch
+		tmpl := Build(VBox.Height(15).Width(30).Gap(2).Grow(1)(Text("ok")))
+		buf := NewBuffer(40, 20)
+		tmpl.Execute(buf, 40, 20)
+
+		if got := tmpl.geom[0].H; got != 15 {
+			t.Errorf("height from int: got %d, want 15", got)
+		}
+		if got := tmpl.geom[0].W; got != 30 {
+			t.Errorf("width from int: got %d, want 30", got)
+		}
+	})
+
+	t.Run("static and dynamic mix", func(t *testing.T) {
+		dynH := int16(15)
+		tmpl := Build(HBox(
+			VBox.Width(20).Height(&dynH)(Text("dynamic")),
+			VBox.Width(20).Height(10)(Text("static")),
+		))
+		buf := NewBuffer(60, 20)
+
+		tmpl.Execute(buf, 60, 20)
+		if got := tmpl.geom[1].H; got != 15 {
+			t.Errorf("dynamic child: got H=%d, want 15", got)
+		}
+		if got := tmpl.geom[3].H; got != 10 {
+			t.Errorf("static child: got H=%d, want 10", got)
+		}
+
+		dynH = 5
+		buf.Clear()
+		tmpl.Execute(buf, 60, 20)
+		if got := tmpl.geom[1].H; got != 5 {
+			t.Errorf("dynamic after change: got H=%d, want 5", got)
+		}
+		if got := tmpl.geom[3].H; got != 10 {
+			t.Errorf("static unchanged: got H=%d, want 10", got)
+		}
+	})
+}
+
 func TestV2IfDynamic(t *testing.T) {
 	showDetails := true
 

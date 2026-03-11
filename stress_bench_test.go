@@ -551,3 +551,168 @@ func BenchmarkFillRect(b *testing.B) {
 		buf.FillRect(0, 0, 120, 50, cell)
 	}
 }
+
+// === Dynamic property benchmarks ===
+
+// BenchmarkStaticHeight - VBox with static height (baseline)
+func BenchmarkStaticHeight(b *testing.B) {
+	buf := NewBuffer(80, 50)
+	content := "content"
+
+	ui := VBox.Height(50)(
+		Text("Header"),
+		VBox.Height(10).Border(BorderSingle).Title("SECTION A").Grow(1)(
+			Text(&content),
+		),
+		VBox.Height(10).Border(BorderSingle).Title("SECTION B").Grow(2)(
+			Text(&content),
+		),
+		VBox.Height(10).Border(BorderSingle).Title("SECTION C").Grow(1)(
+			Text(&content),
+		),
+		Text("Footer"),
+	)
+
+	serial := Build(ui)
+	buf.Clear()
+	serial.Execute(buf, 80, 50)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		buf.ClearDirty()
+		serial.Execute(buf, 80, 50)
+	}
+}
+
+// BenchmarkDynamicHeight - same layout but heights are *int16 pointers
+func BenchmarkDynamicHeight(b *testing.B) {
+	buf := NewBuffer(80, 50)
+	content := "content"
+
+	rootH := int16(50)
+	secA := int16(10)
+	secB := int16(10)
+	secC := int16(10)
+
+	ui := VBox.Height(&rootH)(
+		Text("Header"),
+		VBox.Height(&secA).Border(BorderSingle).Title("SECTION A").Grow(1)(
+			Text(&content),
+		),
+		VBox.Height(&secB).Border(BorderSingle).Title("SECTION B").Grow(2)(
+			Text(&content),
+		),
+		VBox.Height(&secC).Border(BorderSingle).Title("SECTION C").Grow(1)(
+			Text(&content),
+		),
+		Text("Footer"),
+	)
+
+	serial := Build(ui)
+	buf.Clear()
+	serial.Execute(buf, 80, 50)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		buf.ClearDirty()
+		serial.Execute(buf, 80, 50)
+	}
+}
+
+// BenchmarkStaticDashboard - full dashboard with all static properties
+func BenchmarkStaticDashboard(b *testing.B) {
+	buf := NewBuffer(120, 60)
+	content := "status: ok"
+
+	items := make([]StressItem, 20)
+	for i := range items {
+		items[i] = StressItem{
+			Name: "svc-" + string(rune('A'+i)),
+			CPU:  float32(i) / 20.0,
+		}
+	}
+
+	ui := VBox.Height(60)(
+		Text("Dashboard"),
+		HBox.Height(20)(
+			VBox.Width(40).Border(BorderSingle).Title("LEFT")(
+				Text(&content),
+				ForEach(&items, func(item *StressItem) any {
+					return HBox(
+						Text(&item.Name),
+						Progress(&item.CPU).Width(20),
+					)
+				}),
+			),
+			VBox.Grow(1).Border(BorderSingle).Title("RIGHT")(
+				Text(&content),
+			),
+		),
+		VBox.Grow(1).Border(BorderSingle).Title("BOTTOM")(
+			Text(&content),
+		),
+	)
+
+	serial := Build(ui)
+	buf.Clear()
+	serial.Execute(buf, 120, 60)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		buf.ClearDirty()
+		serial.Execute(buf, 120, 60)
+	}
+}
+
+// BenchmarkDynamicDashboard - same dashboard but heights/widths are dynamic
+func BenchmarkDynamicDashboard(b *testing.B) {
+	buf := NewBuffer(120, 60)
+	content := "status: ok"
+
+	items := make([]StressItem, 20)
+	for i := range items {
+		items[i] = StressItem{
+			Name: "svc-" + string(rune('A'+i)),
+			CPU:  float32(i) / 20.0,
+		}
+	}
+
+	rootH := int16(60)
+	midH := int16(20)
+	leftW := int16(40)
+
+	ui := VBox.Height(&rootH)(
+		Text("Dashboard"),
+		HBox.Height(&midH)(
+			VBox.Width(&leftW).Border(BorderSingle).Title("LEFT")(
+				Text(&content),
+				ForEach(&items, func(item *StressItem) any {
+					return HBox(
+						Text(&item.Name),
+						Progress(&item.CPU).Width(20),
+					)
+				}),
+			),
+			VBox.Grow(1).Border(BorderSingle).Title("RIGHT")(
+				Text(&content),
+			),
+		),
+		VBox.Grow(1).Border(BorderSingle).Title("BOTTOM")(
+			Text(&content),
+		),
+	)
+
+	serial := Build(ui)
+	buf.Clear()
+	serial.Execute(buf, 120, 60)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		buf.ClearDirty()
+		serial.Execute(buf, 120, 60)
+	}
+}

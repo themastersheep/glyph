@@ -10,6 +10,7 @@ type TextViewC struct {
 	lastContent      string
 	lastWidth        int
 	declaredBindings []binding
+	flexGrowPtr      *float32
 }
 
 // TextView creates a scrollable multi-line text display with word wrapping.
@@ -25,8 +26,18 @@ func TextView(content *string) *TextViewC {
 }
 
 // Grow sets the flex grow factor so the view expands to fill available space.
-func (tv *TextViewC) Grow(g float32) *TextViewC {
-	tv.grow = g
+// Accepts float32, float64, int, or *float32 for dynamic values.
+func (tv *TextViewC) Grow(g any) *TextViewC {
+	switch val := g.(type) {
+	case float32:
+		tv.grow = val
+	case float64:
+		tv.grow = float32(val)
+	case int:
+		tv.grow = float32(val)
+	case *float32:
+		tv.flexGrowPtr = val
+	}
 	return tv
 }
 
@@ -96,7 +107,12 @@ func (tv *TextViewC) sync() {
 }
 
 func (t *Template) compileTextViewC(v *TextViewC, parent int16, depth int) int16 {
-	layerView := LayerView(v.layer).Grow(v.grow)
+	var layerView LayerViewC
+	if v.flexGrowPtr != nil {
+		layerView = LayerView(v.layer).Grow(v.flexGrowPtr)
+	} else {
+		layerView = LayerView(v.layer).Grow(v.grow)
+	}
 	if v.margin != [4]int16{} {
 		layerView = layerView.MarginTRBL(v.margin[0], v.margin[1], v.margin[2], v.margin[3])
 	}

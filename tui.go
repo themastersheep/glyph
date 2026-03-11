@@ -443,11 +443,15 @@ type Custom struct {
 
 // flex contains internal layout properties (use chainable methods to set).
 type flex struct {
-	percentWidth float32
-	width        int16
-	height       int16
-	flexGrow     float32
-	fitContent   bool
+	percentWidth    float32
+	width           int16
+	height          int16
+	flexGrow        float32
+	fitContent      bool
+	widthPtr        *int16
+	heightPtr       *int16
+	percentWidthPtr *float32
+	flexGrowPtr     *float32
 }
 
 // SelectionList displays a list of items with selection marker.

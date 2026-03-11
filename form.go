@@ -26,14 +26,16 @@ func Field(label string, control any) FormField {
 }
 
 type FormC struct {
-	fields     []FormField
-	fm         *FocusManager
-	gap        int8
-	labelWidth int16
-	labelStyle Style
-	grow       float32
-	margin     [4]int16
-	onSubmit   func()
+	fields      []FormField
+	fm          *FocusManager
+	gap         int8
+	labelWidth  int16
+	labelStyle  Style
+	grow        float32
+	margin      [4]int16
+	onSubmit    func()
+	gapPtr      *int8
+	flexGrowPtr *float32
 }
 
 type FormFn func(fields ...FormField) *FormC
@@ -113,11 +115,18 @@ var Form FormFn = func(fields ...FormField) *FormC {
 	return f
 }
 
-// Gap sets the vertical gap between fields.
-func (f FormFn) Gap(g int8) FormFn {
+// Gap sets the vertical gap between fields. Accepts int8, int, or *int8 for dynamic values.
+func (f FormFn) Gap(g any) FormFn {
 	return func(fields ...FormField) *FormC {
 		form := f(fields...)
-		form.gap = g
+		switch val := g.(type) {
+		case int8:
+			form.gap = val
+		case int:
+			form.gap = int8(val)
+		case *int8:
+			form.gapPtr = val
+		}
 		return form
 	}
 }
@@ -185,11 +194,20 @@ func (f FormFn) OnSubmit(fn func()) FormFn {
 	}
 }
 
-// Grow sets the flex grow factor.
-func (f FormFn) Grow(g float32) FormFn {
+// Grow sets the flex grow factor. Accepts float32, float64, int, or *float32 for dynamic values.
+func (f FormFn) Grow(g any) FormFn {
 	return func(fields ...FormField) *FormC {
 		form := f(fields...)
-		form.grow = g
+		switch val := g.(type) {
+		case float32:
+			form.grow = val
+		case float64:
+			form.grow = float32(val)
+		case int:
+			form.grow = float32(val)
+		case *float32:
+			form.flexGrowPtr = val
+		}
 		return form
 	}
 }
@@ -267,8 +285,15 @@ func (f *FormC) toTemplate() any {
 		}
 	}
 
-	box := VBox.Gap(f.gap)
-	if f.grow > 0 {
+	var box VBoxFn
+	if f.gapPtr != nil {
+		box = VBox.Gap(f.gapPtr)
+	} else {
+		box = VBox.Gap(f.gap)
+	}
+	if f.flexGrowPtr != nil {
+		box = box.Grow(f.flexGrowPtr)
+	} else if f.grow > 0 {
 		box = box.Grow(f.grow)
 	}
 	if f.margin != [4]int16{} {
