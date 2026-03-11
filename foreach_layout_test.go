@@ -48,7 +48,8 @@ func TestSwitchInHBoxForEachLayout(t *testing.T) {
 		t.Fatal("no ForEach op found")
 	}
 
-	iterTmpl := forEachOp.IterTmpl
+	feExt := forEachOp.Ext.(*opForEach)
+	iterTmpl := feExt.iterTmpl
 
 	fmt.Println("=== iter template geom after layout (last-element state) ===")
 	for i, op := range iterTmpl.ops {
@@ -58,7 +59,7 @@ func TestSwitchInHBoxForEachLayout(t *testing.T) {
 	}
 
 	fmt.Println("\n=== iterGeoms (per-element Y positions) ===")
-	for i, g := range forEachOp.iterGeoms {
+	for i, g := range feExt.geoms {
 		fmt.Printf("  item[%d] %q  LocalX=%d LocalY=%d W=%d H=%d\n",
 			i, items[i].Name, g.LocalX, g.LocalY, g.W, g.H)
 	}
@@ -66,14 +67,15 @@ func TestSwitchInHBoxForEachLayout(t *testing.T) {
 	fmt.Println("\n=== Switch case geoms (case[0]=warn, def=ok) ===")
 	for i, op := range iterTmpl.ops {
 		if op.Kind == OpSwitch {
+			swExt := op.Ext.(*opSwitch)
 			fmt.Printf("  Switch op[%d] geom W=%d\n", i, iterTmpl.geom[i].W)
-			for j, ct := range op.SwitchCases {
+			for j, ct := range swExt.cases {
 				if ct != nil && len(ct.geom) > 0 {
 					fmt.Printf("    case[%d] template geom[0] W=%d\n", j, ct.geom[0].W)
 				}
 			}
-			if op.SwitchDef != nil && len(op.SwitchDef.geom) > 0 {
-				fmt.Printf("    default template geom[0] W=%d\n", op.SwitchDef.geom[0].W)
+			if swExt.def != nil && len(swExt.def.geom) > 0 {
+				fmt.Printf("    default template geom[0] W=%d\n", swExt.def.geom[0].W)
 			}
 		}
 	}

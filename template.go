@@ -203,30 +203,7 @@ type Op struct {
 	Margin       [4]int16    // outer margin: top, right, bottom, left
 	NodeRef      *NodeRef    // if set, populated with rendered screen bounds each frame
 
-	// Control flow
-	CondPtr  *bool         // for If (simple bool pointer)
-	CondNode conditionNode // for If (builder-style conditions)
-	ThenTmpl *Template     // for If
-	ElseTmpl *Template     // for If/Else
-	IterTmpl *Template     // for ForEach
-	SlicePtr unsafe.Pointer
-	ElemSize uintptr
-
-	// ForEach runtime - reused across frames
-	iterGeoms []Geom // per-item geometry
-
-	// Switch
-	SwitchNode  switchNodeInterface
-	SwitchCases []*Template
-	SwitchDef   *Template
-
-	// Custom renderer
-	CustomRenderer Renderer
-
-	// Custom layout
-	CustomLayout LayoutFunc
-
-	// component-specific data — type-assert based on Kind.
+	// kind-specific data — type-assert based on Kind.
 	// we use a Kind switch + type assertion instead of interface dispatch because
 	// concrete method calls after assertion are inlinable. interface calls are not,
 	// and cause parameters to escape to heap. verified via go build -gcflags='-m -m'.
@@ -286,6 +263,44 @@ const (
 	textOff
 	textFn
 )
+
+type opIf struct {
+	condPtr  *bool
+	condNode conditionNode
+	thenTmpl *Template
+	elseTmpl *Template
+}
+
+func (c *opIf) eval(elemBase unsafe.Pointer) bool {
+	return (c.condPtr != nil && *c.condPtr) ||
+		(c.condNode != nil && c.condNode.evaluateWithBase(elemBase))
+}
+
+func (c *opIf) evalStatic() bool {
+	return (c.condPtr != nil && *c.condPtr) ||
+		(c.condNode != nil && c.condNode.evaluate())
+}
+
+type opForEach struct {
+	iterTmpl *Template
+	slicePtr unsafe.Pointer
+	elemSize uintptr
+	geoms    []Geom // per-item geometry, reused across frames
+}
+
+type opSwitch struct {
+	node     switchNodeInterface
+	cases    []*Template
+	def      *Template
+}
+
+type opCustomRenderer struct {
+	renderer Renderer
+}
+
+type opCustomLayout struct {
+	layout LayoutFunc
+}
 
 type opText struct {
 	mode   uint8
@@ -464,6 +479,7 @@ type opTreeView struct {
 }
 
 type opSelectionList struct {
+	opForEach
 	listPtr      *SelectionList
 	selectedPtr  *int
 	marker       string
@@ -746,9 +762,9 @@ func (t *Template) compile(node any, parent int16, depth int, elemBase unsafe.Po
 
 func (t *Template) compileRenderer(r Renderer, parent int16, depth int) int16 {
 	return t.addOp(Op{
-		Kind:           OpCustom,
-		Parent:         parent,
-		CustomRenderer: r,
+		Kind:   OpCustom,
+		Parent: parent,
+		Ext:    &opCustomRenderer{renderer: r},
 	}, depth)
 }
 
@@ -795,19 +811,19 @@ func (t *Template) compileCustom(v Custom, parent int16, depth int) int16 {
 		render:  v.Render,
 	}
 	return t.addOp(Op{
-		Kind:           OpCustom,
-		Parent:         parent,
-		CustomRenderer: wrapper,
+		Kind:   OpCustom,
+		Parent: parent,
+		Ext:    &opCustomRenderer{renderer: wrapper},
 	}, depth)
 }
 
 func (t *Template) compileBox(box Box, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
 	// Add layout op first (will fill in ChildStart/ChildEnd)
 	idx := t.addOp(Op{
-		Kind:         OpLayout,
-		Parent:       parent,
-		CustomLayout: box.Layout,
-		ChildStart:   int16(len(t.ops)),
+		Kind:       OpLayout,
+		Parent:     parent,
+		Ext:        &opCustomLayout{layout: box.Layout},
+		ChildStart: int16(len(t.ops)),
 	}, depth)
 
 	// Compile children
@@ -959,14 +975,16 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 		markerSpaces: strings.Repeat(" ", int(markerWidth)),
 	}
 
+	ext.opForEach = opForEach{
+		iterTmpl: iterTmpl,
+		slicePtr: slicePtr,
+		elemSize: sliceElemSize,
+	}
 	op := Op{
-		Kind:     OpSelectionList,
-		Parent:   parent,
-		Margin:   v.Style.margin,
-		SlicePtr: slicePtr,
-		ElemSize: sliceElemSize,
-		IterTmpl: iterTmpl,
-		Ext:      ext,
+		Kind:   OpSelectionList,
+		Parent: parent,
+		Margin: v.Style.margin,
+		Ext:    ext,
 	}
 
 	return t.addOp(op, depth)
@@ -1174,10 +1192,8 @@ func (t *Template) compileCondition(cond conditionNode, parent int16, depth int,
 		}
 	}
 
-	op := Op{
-		Kind:     OpIf,
-		Parent:   parent,
-		CondNode: cond,
+	ext := &opIf{
+		condNode: cond,
 	}
 
 	// Compile then branch as sub-template
@@ -1194,7 +1210,7 @@ func (t *Template) compileCondition(cond conditionNode, parent int16, depth int,
 			thenTmpl.byDepth = thenTmpl.byDepth[:thenTmpl.maxDepth+1]
 		}
 		thenTmpl.geom = make([]Geom, len(thenTmpl.ops))
-		op.ThenTmpl = thenTmpl
+		ext.thenTmpl = thenTmpl
 		t.pendingBindings = append(t.pendingBindings, thenTmpl.pendingBindings...)
 	}
 
@@ -1212,11 +1228,15 @@ func (t *Template) compileCondition(cond conditionNode, parent int16, depth int,
 			elseTmpl.byDepth = elseTmpl.byDepth[:elseTmpl.maxDepth+1]
 		}
 		elseTmpl.geom = make([]Geom, len(elseTmpl.ops))
-		op.ElseTmpl = elseTmpl
+		ext.elseTmpl = elseTmpl
 		t.pendingBindings = append(t.pendingBindings, elseTmpl.pendingBindings...)
 	}
 
-	return t.addOp(op, depth)
+	return t.addOp(Op{
+		Kind:   OpIf,
+		Parent: parent,
+		Ext:    ext,
+	}, depth)
 }
 
 func (t *Template) compileSwitch(sw switchNodeInterface, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
@@ -1229,15 +1249,13 @@ func (t *Template) compileSwitch(sw switchNodeInterface, parent int16, depth int
 		}
 	}
 
-	op := Op{
-		Kind:       OpSwitch,
-		Parent:     parent,
-		SwitchNode: sw,
+	ext := &opSwitch{
+		node: sw,
 	}
 
 	// Compile each case branch
 	caseNodes := sw.getCaseNodes()
-	op.SwitchCases = make([]*Template, len(caseNodes))
+	ext.cases = make([]*Template, len(caseNodes))
 	for i, caseNode := range caseNodes {
 		if caseNode != nil {
 			caseTmpl := &Template{
@@ -1252,7 +1270,7 @@ func (t *Template) compileSwitch(sw switchNodeInterface, parent int16, depth int
 				caseTmpl.byDepth = caseTmpl.byDepth[:caseTmpl.maxDepth+1]
 			}
 			caseTmpl.geom = make([]Geom, len(caseTmpl.ops))
-			op.SwitchCases[i] = caseTmpl
+			ext.cases[i] = caseTmpl
 			t.pendingBindings = append(t.pendingBindings, caseTmpl.pendingBindings...)
 		}
 	}
@@ -1271,11 +1289,15 @@ func (t *Template) compileSwitch(sw switchNodeInterface, parent int16, depth int
 			defTmpl.byDepth = defTmpl.byDepth[:defTmpl.maxDepth+1]
 		}
 		defTmpl.geom = make([]Geom, len(defTmpl.ops))
-		op.SwitchDef = defTmpl
+		ext.def = defTmpl
 		t.pendingBindings = append(t.pendingBindings, defTmpl.pendingBindings...)
 	}
 
-	return t.addOp(op, depth)
+	return t.addOp(Op{
+		Kind:   OpSwitch,
+		Parent: parent,
+		Ext:    ext,
+	}, depth)
 }
 
 func (t *Template) compileForEach(items any, render any, parent int16, depth int) int16 {
@@ -1324,11 +1346,13 @@ func (t *Template) compileForEach(items any, render any, parent int16, depth int
 	iterTmpl.geom = make([]Geom, len(iterTmpl.ops))
 
 	op := Op{
-		Kind:     OpForEach,
-		Parent:   parent,
-		SlicePtr: slicePtr,
-		ElemSize: elemSize,
-		IterTmpl: iterTmpl,
+		Kind:   OpForEach,
+		Parent: parent,
+		Ext: &opForEach{
+			iterTmpl: iterTmpl,
+			slicePtr: slicePtr,
+			elemSize: elemSize,
+		},
 	}
 
 	return t.addOp(op, depth)
@@ -2267,13 +2291,13 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 		geom.W = int16(maxW)
 
 	case OpCustom:
-		if op.CustomRenderer != nil {
-			// Check if it's a customWrapper that can use availW
-			if cw, ok := op.CustomRenderer.(*customWrapper); ok {
+		ext := op.Ext.(*opCustomRenderer)
+		if ext.renderer != nil {
+			if cw, ok := ext.renderer.(*customWrapper); ok {
 				w, _ := cw.MeasureWithAvail(availW)
 				geom.W = w
 			} else {
-				w, _ := op.CustomRenderer.MinSize()
+				w, _ := ext.renderer.MinSize()
 				geom.W = int16(w)
 			}
 		}
@@ -2311,13 +2335,13 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 
 	case OpIf:
 		// Calculate width from the active branch content
-		condTrue := (op.CondPtr != nil && *op.CondPtr) ||
-			(op.CondNode != nil && op.CondNode.evaluateWithBase(elemBase))
+		ifExt := op.Ext.(*opIf)
+		condTrue := ifExt.eval(elemBase)
 		var subTmpl *Template
 		if condTrue {
-			subTmpl = op.ThenTmpl
+			subTmpl = ifExt.thenTmpl
 		} else {
-			subTmpl = op.ElseTmpl
+			subTmpl = ifExt.elseTmpl
 		}
 		if subTmpl != nil {
 			subTmpl.elemBase = elemBase
@@ -2390,13 +2414,13 @@ func (t *Template) distributeVBoxChildWidths(idx int16, op *Op, availW int16, el
 // getIfContentOp returns the root op of an If's active branch content.
 // Returns nil if condition is false and no else branch, or if template is empty.
 func (t *Template) getIfContentOp(childOp *Op, elemBase unsafe.Pointer) *Op {
-	condTrue := (childOp.CondPtr != nil && *childOp.CondPtr) ||
-		(childOp.CondNode != nil && childOp.CondNode.evaluateWithBase(elemBase))
+	childIfExt := childOp.Ext.(*opIf)
+	condTrue := childIfExt.eval(elemBase)
 
-	if condTrue && childOp.ThenTmpl != nil && len(childOp.ThenTmpl.ops) > 0 {
-		return &childOp.ThenTmpl.ops[0]
-	} else if !condTrue && childOp.ElseTmpl != nil && len(childOp.ElseTmpl.ops) > 0 {
-		return &childOp.ElseTmpl.ops[0]
+	if condTrue && childIfExt.thenTmpl != nil && len(childIfExt.thenTmpl.ops) > 0 {
+		return &childIfExt.thenTmpl.ops[0]
+	} else if !condTrue && childIfExt.elseTmpl != nil && len(childIfExt.elseTmpl.ops) > 0 {
+		return &childIfExt.elseTmpl.ops[0]
 	}
 	return nil
 }
@@ -2486,14 +2510,14 @@ func (t *Template) distributeHBoxChildWidths(idx int16, op *Op, availW int16, el
 
 			// For OpIf, also distribute to sub-template
 			if childOp.Kind == OpIf {
-				condTrue := (childOp.CondPtr != nil && *childOp.CondPtr) ||
-					(childOp.CondNode != nil && childOp.CondNode.evaluateWithBase(elemBase))
-				if condTrue && childOp.ThenTmpl != nil {
-					childOp.ThenTmpl.elemBase = elemBase
-					childOp.ThenTmpl.distributeWidths(flexW, elemBase)
-				} else if !condTrue && childOp.ElseTmpl != nil {
-					childOp.ElseTmpl.elemBase = elemBase
-					childOp.ElseTmpl.distributeWidths(flexW, elemBase)
+				childIfExt := childOp.Ext.(*opIf)
+				condTrue := childIfExt.eval(elemBase)
+				if condTrue && childIfExt.thenTmpl != nil {
+					childIfExt.thenTmpl.elemBase = elemBase
+					childIfExt.thenTmpl.distributeWidths(flexW, elemBase)
+				} else if !condTrue && childIfExt.elseTmpl != nil {
+					childIfExt.elseTmpl.elemBase = elemBase
+					childIfExt.elseTmpl.distributeWidths(flexW, elemBase)
 				}
 			}
 		}
@@ -2515,14 +2539,14 @@ func (t *Template) distributeHBoxChildWidths(idx int16, op *Op, availW int16, el
 
 			// For OpIf, also distribute to sub-template
 			if childOp.Kind == OpIf {
-				condTrue := (childOp.CondPtr != nil && *childOp.CondPtr) ||
-					(childOp.CondNode != nil && childOp.CondNode.evaluateWithBase(elemBase))
-				if condTrue && childOp.ThenTmpl != nil {
-					childOp.ThenTmpl.elemBase = elemBase
-					childOp.ThenTmpl.distributeWidths(w, elemBase)
-				} else if !condTrue && childOp.ElseTmpl != nil {
-					childOp.ElseTmpl.elemBase = elemBase
-					childOp.ElseTmpl.distributeWidths(w, elemBase)
+				childIfExt := childOp.Ext.(*opIf)
+				condTrue := childIfExt.eval(elemBase)
+				if condTrue && childIfExt.thenTmpl != nil {
+					childIfExt.thenTmpl.elemBase = elemBase
+					childIfExt.thenTmpl.distributeWidths(w, elemBase)
+				} else if !condTrue && childIfExt.elseTmpl != nil {
+					childIfExt.elseTmpl.elemBase = elemBase
+					childIfExt.elseTmpl.distributeWidths(w, elemBase)
 				}
 			}
 		}
@@ -2853,7 +2877,7 @@ func (t *Template) layout(_ int16) {
 
 			case OpSelectionList:
 				ext := op.Ext.(*opSelectionList)
-				sliceHdr := *(*sliceHeader)(op.SlicePtr)
+				sliceHdr := *(*sliceHeader)(ext.slicePtr)
 				if ext.listPtr != nil {
 					ext.listPtr.len = sliceHdr.Len
 					ext.listPtr.ensureVisible()
@@ -2869,13 +2893,14 @@ func (t *Template) layout(_ int16) {
 
 			case OpCustom:
 				// Custom renderer provides its own size
-				if op.CustomRenderer != nil {
+				crExt := op.Ext.(*opCustomRenderer)
+				if crExt.renderer != nil {
 					// Use customWrapper with computed width for better sizing
-					if cw, ok := op.CustomRenderer.(*customWrapper); ok {
+					if cw, ok := crExt.renderer.(*customWrapper); ok {
 						_, h := cw.MeasureWithAvail(geom.W)
 						geom.H = h
 					} else {
-						_, h := op.CustomRenderer.MinSize()
+						_, h := crExt.renderer.MinSize()
 						geom.H = int16(h)
 					}
 				}
@@ -2924,18 +2949,18 @@ func (t *Template) layout(_ int16) {
 				if op.Parent != -1 {
 					break
 				}
-				condTrue := (op.CondPtr != nil && *op.CondPtr) ||
-					(op.CondNode != nil && op.CondNode.evaluateWithBase(t.elemBase))
-				if condTrue && op.ThenTmpl != nil {
-					op.ThenTmpl.elemBase = t.elemBase
-					op.ThenTmpl.distributeWidths(geom.W, t.elemBase)
-					op.ThenTmpl.layout(0)
-					geom.H = op.ThenTmpl.Height()
-				} else if !condTrue && op.ElseTmpl != nil {
-					op.ElseTmpl.elemBase = t.elemBase
-					op.ElseTmpl.distributeWidths(geom.W, t.elemBase)
-					op.ElseTmpl.layout(0)
-					geom.H = op.ElseTmpl.Height()
+				ifExt := op.Ext.(*opIf)
+				condTrue := ifExt.eval(t.elemBase)
+				if condTrue && ifExt.thenTmpl != nil {
+					ifExt.thenTmpl.elemBase = t.elemBase
+					ifExt.thenTmpl.distributeWidths(geom.W, t.elemBase)
+					ifExt.thenTmpl.layout(0)
+					geom.H = ifExt.thenTmpl.Height()
+				} else if !condTrue && ifExt.elseTmpl != nil {
+					ifExt.elseTmpl.elemBase = t.elemBase
+					ifExt.elseTmpl.distributeWidths(geom.W, t.elemBase)
+					ifExt.elseTmpl.layout(0)
+					geom.H = ifExt.elseTmpl.Height()
 				}
 
 			case OpSwitch:
@@ -2944,12 +2969,13 @@ func (t *Template) layout(_ int16) {
 				if op.Parent != -1 {
 					break
 				}
-				matchIdx := op.SwitchNode.getMatchIndexWithBase(t.elemBase)
+				swExt := op.Ext.(*opSwitch)
+				matchIdx := swExt.node.getMatchIndexWithBase(t.elemBase)
 				var switchTmpl *Template
-				if matchIdx >= 0 && matchIdx < len(op.SwitchCases) {
-					switchTmpl = op.SwitchCases[matchIdx]
+				if matchIdx >= 0 && matchIdx < len(swExt.cases) {
+					switchTmpl = swExt.cases[matchIdx]
 				} else {
-					switchTmpl = op.SwitchDef
+					switchTmpl = swExt.def
 				}
 				if switchTmpl != nil {
 					switchTmpl.elemBase = t.elemBase
@@ -3004,48 +3030,48 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 			switch childOp.Kind {
 			case OpIf:
 				// Use evaluateWithBase for conditions in ForEach context
-				condTrue := (childOp.CondPtr != nil && *childOp.CondPtr) ||
-					(childOp.CondNode != nil && childOp.CondNode.evaluateWithBase(t.elemBase))
+				childIfExt := childOp.Ext.(*opIf)
+				condTrue := childIfExt.eval(t.elemBase)
 				// Use pre-calculated width if set (from flex distribution), otherwise use availW
 				ifWidth := t.geom[i].W
 				if ifWidth == 0 {
 					ifWidth = availW
 				}
-				if childOp.ThenTmpl != nil && condTrue {
+				if childIfExt.thenTmpl != nil && condTrue {
 					// Add gap before this child if needed
 					if needGap && op.Gap > 0 {
 						cursor += int16(op.Gap)
 					}
-					childOp.ThenTmpl.elemBase = t.elemBase
-					childOp.ThenTmpl.distributeWidths(ifWidth, t.elemBase)
-					childOp.ThenTmpl.layout(0)
-					h := childOp.ThenTmpl.Height()
+					childIfExt.thenTmpl.elemBase = t.elemBase
+					childIfExt.thenTmpl.distributeWidths(ifWidth, t.elemBase)
+					childIfExt.thenTmpl.layout(0)
+					h := childIfExt.thenTmpl.Height()
 					t.geom[i].LocalX = contentOffX + cursor
 					t.geom[i].LocalY = contentOffY
 					t.geom[i].H = h
 					// Use sub-template width only if we didn't have a pre-set width
-					if t.geom[i].W == 0 && len(childOp.ThenTmpl.geom) > 0 {
-						t.geom[i].W = childOp.ThenTmpl.geom[0].W
+					if t.geom[i].W == 0 && len(childIfExt.thenTmpl.geom) > 0 {
+						t.geom[i].W = childIfExt.thenTmpl.geom[0].W
 					}
 					cursor += t.geom[i].W
 					if h > maxH {
 						maxH = h
 					}
 					needGap = true // Next visible child needs gap
-				} else if childOp.ElseTmpl != nil && !condTrue {
+				} else if childIfExt.elseTmpl != nil && !condTrue {
 					// Add gap before this child if needed
 					if needGap && op.Gap > 0 {
 						cursor += int16(op.Gap)
 					}
-					childOp.ElseTmpl.elemBase = t.elemBase
-					childOp.ElseTmpl.distributeWidths(ifWidth, t.elemBase)
-					childOp.ElseTmpl.layout(0)
-					h := childOp.ElseTmpl.Height()
+					childIfExt.elseTmpl.elemBase = t.elemBase
+					childIfExt.elseTmpl.distributeWidths(ifWidth, t.elemBase)
+					childIfExt.elseTmpl.layout(0)
+					h := childIfExt.elseTmpl.Height()
 					t.geom[i].LocalX = contentOffX + cursor
 					t.geom[i].LocalY = contentOffY
 					t.geom[i].H = h
-					if t.geom[i].W == 0 && len(childOp.ElseTmpl.geom) > 0 {
-						t.geom[i].W = childOp.ElseTmpl.geom[0].W
+					if t.geom[i].W == 0 && len(childIfExt.elseTmpl.geom) > 0 {
+						t.geom[i].W = childIfExt.elseTmpl.geom[0].W
 					}
 					cursor += t.geom[i].W
 					if h > maxH {
@@ -3078,8 +3104,9 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 				// share one geom array (last-element wins), so the Switch must reserve
 				// enough space for any case that could render — otherwise wider cases
 				// get truncated and column positions vary per row, breaking alignment.
+				childSwExt := childOp.Ext.(*opSwitch)
 				var maxCaseW, maxCaseH int16
-				allCaseTmpls := append(childOp.SwitchCases, childOp.SwitchDef)
+				allCaseTmpls := append(childSwExt.cases, childSwExt.def)
 				for _, ct := range allCaseTmpls {
 					if ct == nil {
 						continue
@@ -3153,24 +3180,24 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 			switch childOp.Kind {
 			case OpIf:
 				// Use evaluateWithBase for conditions in ForEach context
-				condTrue := (childOp.CondPtr != nil && *childOp.CondPtr) ||
-					(childOp.CondNode != nil && childOp.CondNode.evaluateWithBase(t.elemBase))
-				if childOp.ThenTmpl != nil && condTrue {
-					childOp.ThenTmpl.elemBase = t.elemBase
-					childOp.ThenTmpl.distributeWidths(availW, t.elemBase)
-					childOp.ThenTmpl.layout(0)
-					h := childOp.ThenTmpl.Height()
+				childIfExt := childOp.Ext.(*opIf)
+				condTrue := childIfExt.eval(t.elemBase)
+				if childIfExt.thenTmpl != nil && condTrue {
+					childIfExt.thenTmpl.elemBase = t.elemBase
+					childIfExt.thenTmpl.distributeWidths(availW, t.elemBase)
+					childIfExt.thenTmpl.layout(0)
+					h := childIfExt.thenTmpl.Height()
 					t.geom[i].LocalX = contentOffX
 					t.geom[i].LocalY = contentOffY + cursor
 					t.geom[i].H = h
 					t.geom[i].ContentH = h // Track content height for flex
 					t.geom[i].W = availW
 					cursor += h
-				} else if childOp.ElseTmpl != nil && !condTrue {
-					childOp.ElseTmpl.elemBase = t.elemBase
-					childOp.ElseTmpl.distributeWidths(availW, t.elemBase)
-					childOp.ElseTmpl.layout(0)
-					h := childOp.ElseTmpl.Height()
+				} else if childIfExt.elseTmpl != nil && !condTrue {
+					childIfExt.elseTmpl.elemBase = t.elemBase
+					childIfExt.elseTmpl.distributeWidths(availW, t.elemBase)
+					childIfExt.elseTmpl.layout(0)
+					h := childIfExt.elseTmpl.Height()
 					t.geom[i].LocalX = contentOffX
 					t.geom[i].LocalY = contentOffY + cursor
 					t.geom[i].H = h
@@ -3192,12 +3219,13 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 
 			case OpSwitch:
 				// Get matching template
+				childSwExt := childOp.Ext.(*opSwitch)
 				var tmpl *Template
-				matchIdx := childOp.SwitchNode.getMatchIndexWithBase(t.elemBase)
-				if matchIdx >= 0 && matchIdx < len(childOp.SwitchCases) {
-					tmpl = childOp.SwitchCases[matchIdx]
+				matchIdx := childSwExt.node.getMatchIndexWithBase(t.elemBase)
+				if matchIdx >= 0 && matchIdx < len(childSwExt.cases) {
+					tmpl = childSwExt.cases[matchIdx]
 				} else {
-					tmpl = childOp.SwitchDef
+					tmpl = childSwExt.def
 				}
 				if tmpl != nil {
 					tmpl.elemBase = t.elemBase
@@ -3314,14 +3342,14 @@ func (t *Template) stretchRowChildren(idx int16, op *Op) {
 
 // stretchIfContent stretches the active branch of an If to the given height.
 func (t *Template) stretchIfContent(op *Op, newH int16) {
-	condTrue := (op.CondPtr != nil && *op.CondPtr) ||
-		(op.CondNode != nil && op.CondNode.evaluateWithBase(t.elemBase))
+	ifExt := op.Ext.(*opIf)
+	condTrue := ifExt.eval(t.elemBase)
 
 	var tmpl *Template
-	if condTrue && op.ThenTmpl != nil {
-		tmpl = op.ThenTmpl
-	} else if !condTrue && op.ElseTmpl != nil {
-		tmpl = op.ElseTmpl
+	if condTrue && ifExt.thenTmpl != nil {
+		tmpl = ifExt.thenTmpl
+	} else if !condTrue && ifExt.elseTmpl != nil {
+		tmpl = ifExt.elseTmpl
 	}
 
 	if tmpl == nil || len(tmpl.ops) == 0 {
@@ -3484,14 +3512,14 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 
 // propagateFlexToIf propagates flex height to an If's active branch template.
 func (t *Template) propagateFlexToIf(op *Op, newH int16) {
-	condTrue := (op.CondPtr != nil && *op.CondPtr) ||
-		(op.CondNode != nil && op.CondNode.evaluateWithBase(t.elemBase))
+	ifExt := op.Ext.(*opIf)
+	condTrue := ifExt.eval(t.elemBase)
 
 	var tmpl *Template
-	if condTrue && op.ThenTmpl != nil {
-		tmpl = op.ThenTmpl
-	} else if !condTrue && op.ElseTmpl != nil {
-		tmpl = op.ElseTmpl
+	if condTrue && ifExt.thenTmpl != nil {
+		tmpl = ifExt.thenTmpl
+	} else if !condTrue && ifExt.elseTmpl != nil {
+		tmpl = ifExt.elseTmpl
 	}
 
 	if tmpl == nil || len(tmpl.ops) == 0 {
@@ -3510,14 +3538,14 @@ func (t *Template) propagateFlexToIf(op *Op, newH int16) {
 // This allows If-wrapped containers to participate in flex distribution.
 func (t *Template) getIfFlexGrow(op *Op) float32 {
 	// Determine which branch is active
-	condTrue := (op.CondPtr != nil && *op.CondPtr) ||
-		(op.CondNode != nil && op.CondNode.evaluateWithBase(t.elemBase))
+	ifExt := op.Ext.(*opIf)
+	condTrue := ifExt.eval(t.elemBase)
 
 	var tmpl *Template
-	if condTrue && op.ThenTmpl != nil {
-		tmpl = op.ThenTmpl
-	} else if !condTrue && op.ElseTmpl != nil {
-		tmpl = op.ElseTmpl
+	if condTrue && ifExt.thenTmpl != nil {
+		tmpl = ifExt.thenTmpl
+	} else if !condTrue && ifExt.elseTmpl != nil {
+		tmpl = ifExt.elseTmpl
 	}
 
 	if tmpl == nil || len(tmpl.ops) == 0 {
@@ -3535,7 +3563,8 @@ func (t *Template) getIfFlexGrow(op *Op) float32 {
 
 // layoutCustom handles custom layout containers using the Arranger interface.
 func (t *Template) layoutCustom(idx int16, op *Op, geom *Geom) {
-	if op.CustomLayout == nil {
+	clExt := op.Ext.(*opCustomLayout)
+	if clExt.layout == nil {
 		return
 	}
 
@@ -3554,7 +3583,7 @@ func (t *Template) layoutCustom(idx int16, op *Op, geom *Geom) {
 	}
 
 	// Call the layout function
-	rects := op.CustomLayout(childSizes, int(geom.W), int(geom.H))
+	rects := clExt.layout(childSizes, int(geom.W), int(geom.H))
 
 	// Apply positions to children
 	childIdx := 0
@@ -3583,36 +3612,37 @@ func (t *Template) layoutCustom(idx int16, op *Op, geom *Geom) {
 
 // layoutForEach iterates items, layouts each, returns total height and max width.
 func (t *Template) layoutForEach(_ int16, op *Op, availW int16) (totalH, maxW int16) {
-	if op.IterTmpl == nil || op.SlicePtr == nil {
+	feExt := op.Ext.(*opForEach)
+	if feExt.iterTmpl == nil || feExt.slicePtr == nil {
 		return 0, 0
 	}
 
-	sliceHdr := *(*sliceHeader)(op.SlicePtr)
+	sliceHdr := *(*sliceHeader)(feExt.slicePtr)
 	if sliceHdr.Len == 0 {
 		return 0, 0
 	}
 
 	// Ensure we have enough geometry slots for items
-	if cap(op.iterGeoms) < sliceHdr.Len {
-		op.iterGeoms = make([]Geom, sliceHdr.Len)
+	if cap(feExt.geoms) < sliceHdr.Len {
+		feExt.geoms = make([]Geom, sliceHdr.Len)
 	}
-	op.iterGeoms = op.iterGeoms[:sliceHdr.Len]
+	feExt.geoms = feExt.geoms[:sliceHdr.Len]
 
 	cursor := int16(0)
 	for i := 0; i < sliceHdr.Len; i++ {
 		// Get element pointer for this item
-		elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*op.ElemSize)
+		elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*feExt.elemSize)
 
 		// Layout sub-template for this item with element base
-		op.IterTmpl.elemBase = elemPtr // Set element base for condition evaluation
-		op.IterTmpl.distributeWidths(availW, elemPtr)
-		op.IterTmpl.layout(0)
-		itemH := op.IterTmpl.Height()
+		feExt.iterTmpl.elemBase = elemPtr // Set element base for condition evaluation
+		feExt.iterTmpl.distributeWidths(availW, elemPtr)
+		feExt.iterTmpl.layout(0)
+		itemH := feExt.iterTmpl.Height()
 
-		op.iterGeoms[i].LocalX = 0
-		op.iterGeoms[i].LocalY = cursor
-		op.iterGeoms[i].H = itemH
-		op.iterGeoms[i].W = availW
+		feExt.geoms[i].LocalX = 0
+		feExt.geoms[i].LocalY = cursor
+		feExt.geoms[i].H = itemH
+		feExt.geoms[i].W = availW
 
 		cursor += itemH
 
@@ -3930,8 +3960,9 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 		t.pendingScreenEffects = append(t.pendingScreenEffects, ext.fns...)
 
 	case OpCustom:
-		if op.CustomRenderer != nil {
-			op.CustomRenderer.Render(buf, int(absX), int(absY), int(contentW), int(contentH))
+		crExt := op.Ext.(*opCustomRenderer)
+		if crExt.renderer != nil {
+			crExt.renderer.Render(buf, int(absX), int(absY), int(contentW), int(contentH))
 		}
 
 	case OpLayout:
@@ -4072,59 +4103,62 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 
 	case OpIf:
 		// Render active branch if condition is true
-		condTrue := (op.CondPtr != nil && *op.CondPtr) || (op.CondNode != nil && op.CondNode.evaluate())
-		if op.ThenTmpl != nil && condTrue {
-			op.ThenTmpl.app = t.app
-			op.ThenTmpl.inheritedStyle = t.inheritedStyle // propagate inherited style
-			op.ThenTmpl.inheritedFill = t.inheritedFill   // propagate inherited fill
-			op.ThenTmpl.clipMaxY = t.clipMaxY             // propagate vertical clip
-			op.ThenTmpl.elemBase = t.elemBase             // propagate for offset-based text inside branch templates
-			op.ThenTmpl.pendingOverlays = op.ThenTmpl.pendingOverlays[:0]
-			op.ThenTmpl.pendingScreenEffects = op.ThenTmpl.pendingScreenEffects[:0]
-			op.ThenTmpl.render(buf, absX, absY, geom.W)
-			t.pendingOverlays = append(t.pendingOverlays, op.ThenTmpl.pendingOverlays...)
-			t.pendingScreenEffects = append(t.pendingScreenEffects, op.ThenTmpl.pendingScreenEffects...)
-		} else if op.ElseTmpl != nil && !condTrue {
-			op.ElseTmpl.app = t.app
-			op.ElseTmpl.inheritedStyle = t.inheritedStyle // propagate inherited style
-			op.ElseTmpl.inheritedFill = t.inheritedFill   // propagate inherited fill
-			op.ElseTmpl.clipMaxY = t.clipMaxY             // propagate vertical clip
-			op.ElseTmpl.elemBase = t.elemBase             // propagate for offset-based text inside branch templates
-			op.ElseTmpl.pendingOverlays = op.ElseTmpl.pendingOverlays[:0]
-			op.ElseTmpl.pendingScreenEffects = op.ElseTmpl.pendingScreenEffects[:0]
-			op.ElseTmpl.render(buf, absX, absY, geom.W)
-			t.pendingOverlays = append(t.pendingOverlays, op.ElseTmpl.pendingOverlays...)
-			t.pendingScreenEffects = append(t.pendingScreenEffects, op.ElseTmpl.pendingScreenEffects...)
+		ifExt := op.Ext.(*opIf)
+		condTrue := ifExt.evalStatic()
+		if ifExt.thenTmpl != nil && condTrue {
+			ifExt.thenTmpl.app = t.app
+			ifExt.thenTmpl.inheritedStyle = t.inheritedStyle // propagate inherited style
+			ifExt.thenTmpl.inheritedFill = t.inheritedFill   // propagate inherited fill
+			ifExt.thenTmpl.clipMaxY = t.clipMaxY             // propagate vertical clip
+			ifExt.thenTmpl.elemBase = t.elemBase             // propagate for offset-based text inside branch templates
+			ifExt.thenTmpl.pendingOverlays = ifExt.thenTmpl.pendingOverlays[:0]
+			ifExt.thenTmpl.pendingScreenEffects = ifExt.thenTmpl.pendingScreenEffects[:0]
+			ifExt.thenTmpl.render(buf, absX, absY, geom.W)
+			t.pendingOverlays = append(t.pendingOverlays, ifExt.thenTmpl.pendingOverlays...)
+			t.pendingScreenEffects = append(t.pendingScreenEffects, ifExt.thenTmpl.pendingScreenEffects...)
+		} else if ifExt.elseTmpl != nil && !condTrue {
+			ifExt.elseTmpl.app = t.app
+			ifExt.elseTmpl.inheritedStyle = t.inheritedStyle // propagate inherited style
+			ifExt.elseTmpl.inheritedFill = t.inheritedFill   // propagate inherited fill
+			ifExt.elseTmpl.clipMaxY = t.clipMaxY             // propagate vertical clip
+			ifExt.elseTmpl.elemBase = t.elemBase             // propagate for offset-based text inside branch templates
+			ifExt.elseTmpl.pendingOverlays = ifExt.elseTmpl.pendingOverlays[:0]
+			ifExt.elseTmpl.pendingScreenEffects = ifExt.elseTmpl.pendingScreenEffects[:0]
+			ifExt.elseTmpl.render(buf, absX, absY, geom.W)
+			t.pendingOverlays = append(t.pendingOverlays, ifExt.elseTmpl.pendingOverlays...)
+			t.pendingScreenEffects = append(t.pendingScreenEffects, ifExt.elseTmpl.pendingScreenEffects...)
 		}
 
 	case OpForEach:
 		// Render each item using iterGeoms for positioning
-		if op.IterTmpl == nil || op.SlicePtr == nil {
+		feExt := op.Ext.(*opForEach)
+		if feExt.iterTmpl == nil || feExt.slicePtr == nil {
 			return
 		}
-		sliceHdr := *(*sliceHeader)(op.SlicePtr)
+		sliceHdr := *(*sliceHeader)(feExt.slicePtr)
 		if sliceHdr.Len == 0 {
 			return
 		}
 
-		for i := 0; i < sliceHdr.Len && i < len(op.iterGeoms); i++ {
-			itemGeom := &op.iterGeoms[i]
+		for i := 0; i < sliceHdr.Len && i < len(feExt.geoms); i++ {
+			itemGeom := &feExt.geoms[i]
 			itemAbsX := absX + itemGeom.LocalX
 			itemAbsY := absY + itemGeom.LocalY
 
 			// Rebind template ops to this element's data
-			elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*op.ElemSize)
-			t.renderSubTemplate(buf, op.IterTmpl, itemAbsX, itemAbsY, itemGeom.W, elemPtr)
+			elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*feExt.elemSize)
+			t.renderSubTemplate(buf, feExt.iterTmpl, itemAbsX, itemAbsY, itemGeom.W, elemPtr)
 		}
 
 	case OpSwitch:
 		// Render matching case template
+		swExt := op.Ext.(*opSwitch)
 		var tmpl *Template
-		matchIdx := op.SwitchNode.getMatchIndexWithBase(t.elemBase)
-		if matchIdx >= 0 && matchIdx < len(op.SwitchCases) {
-			tmpl = op.SwitchCases[matchIdx]
+		matchIdx := swExt.node.getMatchIndexWithBase(t.elemBase)
+		if matchIdx >= 0 && matchIdx < len(swExt.cases) {
+			tmpl = swExt.cases[matchIdx]
 		} else {
-			tmpl = op.SwitchDef
+			tmpl = swExt.def
 		}
 		if tmpl != nil {
 			tmpl.clipMaxY = t.clipMaxY           // propagate vertical clip
@@ -4318,8 +4352,9 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 		sub.pendingScreenEffects = append(sub.pendingScreenEffects, ext.fns...)
 
 	case OpCustom:
-		if op.CustomRenderer != nil {
-			op.CustomRenderer.Render(buf, int(absX), int(absY), int(contentW), int(contentH))
+		crExt := op.Ext.(*opCustomRenderer)
+		if crExt.renderer != nil {
+			crExt.renderer.Render(buf, int(absX), int(absY), int(contentW), int(contentH))
 		}
 
 	case OpLayout:
@@ -4442,38 +4477,41 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 
 	case OpIf:
 		// Use evaluateWithBase for conditions inside ForEach
-		condTrue := (op.CondPtr != nil && *op.CondPtr) || (op.CondNode != nil && op.CondNode.evaluateWithBase(elemBase))
-		if op.ThenTmpl != nil && condTrue {
-			op.ThenTmpl.inheritedStyle = sub.inheritedStyle // propagate inherited style
-			op.ThenTmpl.inheritedFill = sub.inheritedFill   // propagate inherited fill
-			sub.renderSubTemplate(buf, op.ThenTmpl, absX, absY, geom.W, elemBase)
-		} else if op.ElseTmpl != nil && !condTrue {
-			op.ElseTmpl.inheritedStyle = sub.inheritedStyle // propagate inherited style
-			op.ElseTmpl.inheritedFill = sub.inheritedFill   // propagate inherited fill
-			sub.renderSubTemplate(buf, op.ElseTmpl, absX, absY, geom.W, elemBase)
+		ifExt := op.Ext.(*opIf)
+		condTrue := ifExt.eval(elemBase)
+		if ifExt.thenTmpl != nil && condTrue {
+			ifExt.thenTmpl.inheritedStyle = sub.inheritedStyle // propagate inherited style
+			ifExt.thenTmpl.inheritedFill = sub.inheritedFill   // propagate inherited fill
+			sub.renderSubTemplate(buf, ifExt.thenTmpl, absX, absY, geom.W, elemBase)
+		} else if ifExt.elseTmpl != nil && !condTrue {
+			ifExt.elseTmpl.inheritedStyle = sub.inheritedStyle // propagate inherited style
+			ifExt.elseTmpl.inheritedFill = sub.inheritedFill   // propagate inherited fill
+			sub.renderSubTemplate(buf, ifExt.elseTmpl, absX, absY, geom.W, elemBase)
 		}
 
 	case OpForEach:
 		// Nested ForEach - render with nested element base
-		if op.IterTmpl != nil && op.SlicePtr != nil {
-			sliceHdr := *(*sliceHeader)(op.SlicePtr)
-			for j := 0; j < sliceHdr.Len && j < len(op.iterGeoms); j++ {
-				itemGeom := &op.iterGeoms[j]
+		feExt := op.Ext.(*opForEach)
+		if feExt.iterTmpl != nil && feExt.slicePtr != nil {
+			sliceHdr := *(*sliceHeader)(feExt.slicePtr)
+			for j := 0; j < sliceHdr.Len && j < len(feExt.geoms); j++ {
+				itemGeom := &feExt.geoms[j]
 				itemAbsX := absX + itemGeom.LocalX
 				itemAbsY := absY + itemGeom.LocalY
-				nestedElemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(j)*op.ElemSize)
-				sub.renderSubTemplate(buf, op.IterTmpl, itemAbsX, itemAbsY, itemGeom.W, nestedElemPtr)
+				nestedElemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(j)*feExt.elemSize)
+				sub.renderSubTemplate(buf, feExt.iterTmpl, itemAbsX, itemAbsY, itemGeom.W, nestedElemPtr)
 			}
 		}
 
 	case OpSwitch:
 		// Render matching case template within ForEach context
+		swExt := op.Ext.(*opSwitch)
 		var tmpl *Template
-		matchIdx := op.SwitchNode.getMatchIndexWithBase(elemBase)
-		if matchIdx >= 0 && matchIdx < len(op.SwitchCases) {
-			tmpl = op.SwitchCases[matchIdx]
+		matchIdx := swExt.node.getMatchIndexWithBase(elemBase)
+		if matchIdx >= 0 && matchIdx < len(swExt.cases) {
+			tmpl = swExt.cases[matchIdx]
 		} else {
-			tmpl = op.SwitchDef
+			tmpl = swExt.def
 		}
 		if tmpl != nil {
 			sub.renderSubTemplate(buf, tmpl, absX, absY, geom.W, elemBase)
@@ -4484,7 +4522,7 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 // renderSelectionList renders a selection list with marker and windowing.
 func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, absY, maxW int16) {
 	ext := op.Ext.(*opSelectionList)
-	sliceHdr := *(*sliceHeader)(op.SlicePtr)
+	sliceHdr := *(*sliceHeader)(ext.slicePtr)
 	if sliceHdr.Len == 0 {
 		return
 	}
@@ -4541,8 +4579,8 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 	contentX := absX + ext.markerWidth
 
 	needsFullPipeline := false
-	if op.IterTmpl != nil && len(op.IterTmpl.ops) > 0 {
-		firstOp := &op.IterTmpl.ops[0]
+	if ext.iterTmpl != nil && len(ext.iterTmpl.ops) > 0 {
+		firstOp := &ext.iterTmpl.ops[0]
 		needsFullPipeline = firstOp.Kind == OpContainer || firstOp.Kind == OpLayout || firstOp.Kind == OpJump
 	}
 
@@ -4594,26 +4632,26 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 		buf.WriteStringFast(int(absX), y, markerText, t.effectiveStyle(markerStyle), int(maxW))
 
 		// Get content from iteration template
-		if op.IterTmpl != nil && len(op.IterTmpl.ops) > 0 {
-			elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*op.ElemSize)
+		if ext.iterTmpl != nil && len(ext.iterTmpl.ops) > 0 {
+			elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*ext.elemSize)
 
 			if needsFullPipeline {
 				// Complex layout: do full width distribution, layout, and render
-				op.IterTmpl.elemBase = elemPtr
-				op.IterTmpl.distributeWidths(contentW, elemPtr)
-				op.IterTmpl.layout(0)
+				ext.iterTmpl.elemBase = elemPtr
+				ext.iterTmpl.distributeWidths(contentW, elemPtr)
+				ext.iterTmpl.layout(0)
 				// Set row background (used by renderSubOp)
 				if isSelected && selectedStyle.BG.Mode != 0 {
-					op.IterTmpl.rowBG = selectedStyle.BG
+					ext.iterTmpl.rowBG = selectedStyle.BG
 				} else if defaultStyle.BG.Mode != 0 {
-					op.IterTmpl.rowBG = defaultStyle.BG
+					ext.iterTmpl.rowBG = defaultStyle.BG
 				} else {
-					op.IterTmpl.rowBG = Color{}
+					ext.iterTmpl.rowBG = Color{}
 				}
-				t.renderSubTemplate(buf, op.IterTmpl, contentX, int16(y), contentW, elemPtr)
+				t.renderSubTemplate(buf, ext.iterTmpl, contentX, int16(y), contentW, elemPtr)
 			} else {
 				// Simple text: fast path (no layout needed)
-				iterOp := &op.IterTmpl.ops[0]
+				iterOp := &ext.iterTmpl.ops[0]
 
 				switch iterOp.Kind {
 				case OpText:
@@ -5508,11 +5546,14 @@ func (t *Template) DebugDump(prefix string) {
 			prefix, i, kindStr, op.Parent, geom.W, geom.H, flags)
 
 		// Dump sub-templates for If
-		if op.Kind == OpIf && op.ThenTmpl != nil {
-			op.ThenTmpl.DebugDump(prefix + "    Then: ")
-		}
-		if op.Kind == OpIf && op.ElseTmpl != nil {
-			op.ElseTmpl.DebugDump(prefix + "    Else: ")
+		if op.Kind == OpIf {
+			ifExt := op.Ext.(*opIf)
+			if ifExt.thenTmpl != nil {
+				ifExt.thenTmpl.DebugDump(prefix + "    Then: ")
+			}
+			if ifExt.elseTmpl != nil {
+				ifExt.elseTmpl.DebugDump(prefix + "    Else: ")
+			}
 		}
 	}
 }
