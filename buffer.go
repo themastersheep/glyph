@@ -352,6 +352,84 @@ func (b *Buffer) WriteSparkline(x, y int, values []float64, width int, min, max 
 	}
 }
 
+// WriteSparklineMulti writes a multi-row sparkline chart.
+// total vertical resolution is height * 8 levels.
+// renders bottom-up: full blocks for saturated rows, fractional block for the top cell, space above.
+func (b *Buffer) WriteSparklineMulti(x, y int, values []float64, width, height int, min, max float64, style Style) {
+	if height <= 0 || len(values) == 0 {
+		return
+	}
+
+	// auto-detect min/max if not specified
+	if min == 0 && max == 0 {
+		min, max = values[0], values[0]
+		for _, v := range values {
+			if v < min {
+				min = v
+			}
+			if v > max {
+				max = v
+			}
+		}
+	}
+
+	valRange := max - min
+	if valRange == 0 {
+		valRange = 1
+	}
+
+	totalLevels := height * 8
+	dataLen := len(values)
+
+	for i := 0; i < width && x+i < b.width; i++ {
+		if x+i < 0 {
+			continue
+		}
+
+		dataIdx := i * dataLen / width
+		if dataIdx >= dataLen {
+			dataIdx = dataLen - 1
+		}
+
+		normalized := (values[dataIdx] - min) / valRange
+		if normalized < 0 {
+			normalized = 0
+		} else if normalized > 1 {
+			normalized = 1
+		}
+
+		// how many eighth-levels this value fills
+		filled := int(normalized * float64(totalLevels))
+		if filled > totalLevels {
+			filled = totalLevels
+		}
+
+		// render rows bottom-up
+		for row := 0; row < height; row++ {
+			ry := y + height - 1 - row // screen y: bottom row first
+			if ry < 0 || ry >= b.height {
+				continue
+			}
+
+			rowLevels := filled - row*8 // levels remaining for this row
+			var r rune
+			if rowLevels >= 8 {
+				r = '█'
+			} else if rowLevels > 0 {
+				r = sparklineChars[rowLevels]
+			} else {
+				r = ' '
+			}
+
+			b.cells[ry*b.width+x+i] = Cell{Rune: r, Style: style}
+			if ry > b.dirtyMaxY {
+				b.dirtyMaxY = ry
+			}
+			b.dirtyRows[ry] = true
+		}
+	}
+}
+
 // SetRune sets just the rune at the given coordinates, preserving style.
 func (b *Buffer) SetRune(x, y int, r rune) {
 	if !b.InBounds(x, y) {

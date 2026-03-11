@@ -426,6 +426,62 @@ func TestSparklineComponent(t *testing.T) {
 			t.Error("Sparkline should produce output")
 		}
 	})
+
+	t.Run("multi-row sparkline height", func(t *testing.T) {
+		values := []float64{0, 50, 100}
+		tmpl := Build(Sparkline(values).Width(3).Height(3).Range(0, 100))
+
+		buf := NewBuffer(3, 3)
+		tmpl.Execute(buf, 3, 3)
+
+		// row 0 (top): col 0 should be space (0%), col 2 should be full block (100%)
+		top := buf.Get(0, 0)
+		if top.Rune != ' ' {
+			t.Errorf("top-left should be space for 0%% value, got %q", string(top.Rune))
+		}
+		topRight := buf.Get(2, 0)
+		if topRight.Rune != '█' {
+			t.Errorf("top-right should be full block for 100%% value, got %q", string(topRight.Rune))
+		}
+
+		// bottom row: all columns should have content (even 0% gets ▁ minimum from fractional)
+		bot := buf.Get(0, 2)
+		if bot.Rune != ' ' && (bot.Rune < '▁' || bot.Rune > '█') {
+			t.Errorf("bottom-left unexpected rune: %q", string(bot.Rune))
+		}
+		botRight := buf.Get(2, 2)
+		if botRight.Rune != '█' {
+			t.Errorf("bottom-right should be full block for 100%%, got %q", string(botRight.Rune))
+		}
+
+		t.Logf("Multi-row output:\n%s", buf.String())
+	})
+
+	t.Run("multi-row sparkline via builder", func(t *testing.T) {
+		values := []float64{0, 50, 100}
+		tmpl := Build(Sparkline(values).Width(3).Height(4))
+
+		buf := NewBuffer(3, 4)
+		tmpl.Execute(buf, 3, 4)
+
+		// 100% value should fill all 4 rows with full blocks
+		for row := 0; row < 4; row++ {
+			c := buf.Get(2, row)
+			if c.Rune != '█' {
+				t.Errorf("row %d col 2 should be █ for 100%%, got %q", row, string(c.Rune))
+			}
+		}
+
+		// 0% value should be space everywhere
+		for row := 0; row < 4; row++ {
+			c := buf.Get(0, row)
+			if c.Rune != ' ' {
+				t.Errorf("row %d col 0 should be space for 0%%, got %q", row, string(c.Rune))
+			}
+		}
+
+		t.Logf("Builder multi-row output:\n%s", buf.String())
+	})
 }
 
 func TestHRuleVRuleSpacer(t *testing.T) {

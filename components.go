@@ -959,6 +959,7 @@ func (c counterC) Streaming(s *bool) counterC { c.streaming = s; return c }
 type SparklineC struct {
 	values any // []float64 or *[]float64
 	width  int16
+	height int16
 	min    float64
 	max    float64
 	style  Style
@@ -973,6 +974,13 @@ func Sparkline(values any) SparklineC {
 // Width sets a fixed width.
 func (s SparklineC) Width(w int16) SparklineC {
 	s.width = w
+	return s
+}
+
+// Height sets the vertical height in rows. Default is 1.
+// Each row adds 8 levels of vertical resolution.
+func (s SparklineC) Height(h int16) SparklineC {
+	s.height = h
 	return s
 }
 

@@ -1422,6 +1422,7 @@ func (t *Template) compileSparklineC(v SparklineC, parent int16, depth int) int1
 	op := Op{
 		Parent:     parent,
 		Width:      v.width,
+		Height:     v.height,
 		SparkMin:   v.min,
 		SparkMax:   v.max,
 		SparkStyle: v.style,
@@ -2685,7 +2686,10 @@ func (t *Template) layout(_ int16) {
 				}
 
 			case OpSparkline, OpSparklinePtr:
-				geom.H = 1
+				geom.H = op.Height
+				if geom.H <= 0 {
+					geom.H = 1
+				}
 
 			case OpHRule:
 				geom.H = 1
@@ -3768,12 +3772,22 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 
 	case OpSparkline:
 		style := t.effectiveStyle(op.SparkStyle)
-		buf.WriteSparkline(int(absX), int(absY), op.SparkValues, int(contentW), op.SparkMin, op.SparkMax, style)
+		h := int(geom.H)
+		if h <= 1 {
+			buf.WriteSparkline(int(absX), int(absY), op.SparkValues, int(contentW), op.SparkMin, op.SparkMax, style)
+		} else {
+			buf.WriteSparklineMulti(int(absX), int(absY), op.SparkValues, int(contentW), h, op.SparkMin, op.SparkMax, style)
+		}
 
 	case OpSparklinePtr:
 		if op.SparkValuesPtr != nil {
 			style := t.effectiveStyle(op.SparkStyle)
-			buf.WriteSparkline(int(absX), int(absY), *op.SparkValuesPtr, int(contentW), op.SparkMin, op.SparkMax, style)
+			h := int(geom.H)
+			if h <= 1 {
+				buf.WriteSparkline(int(absX), int(absY), *op.SparkValuesPtr, int(contentW), op.SparkMin, op.SparkMax, style)
+			} else {
+				buf.WriteSparklineMulti(int(absX), int(absY), *op.SparkValuesPtr, int(contentW), h, op.SparkMin, op.SparkMax, style)
+			}
 		}
 
 	case OpHRule:
@@ -4272,12 +4286,22 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 
 	case OpSparkline:
 		style := sub.effectiveStyle(op.SparkStyle)
-		buf.WriteSparkline(int(absX), int(absY), op.SparkValues, int(contentW), op.SparkMin, op.SparkMax, style)
+		h := int(geom.H)
+		if h <= 1 {
+			buf.WriteSparkline(int(absX), int(absY), op.SparkValues, int(contentW), op.SparkMin, op.SparkMax, style)
+		} else {
+			buf.WriteSparklineMulti(int(absX), int(absY), op.SparkValues, int(contentW), h, op.SparkMin, op.SparkMax, style)
+		}
 
 	case OpSparklinePtr:
 		if op.SparkValuesPtr != nil {
 			style := sub.effectiveStyle(op.SparkStyle)
-			buf.WriteSparkline(int(absX), int(absY), *op.SparkValuesPtr, int(contentW), op.SparkMin, op.SparkMax, style)
+			h := int(geom.H)
+			if h <= 1 {
+				buf.WriteSparkline(int(absX), int(absY), *op.SparkValuesPtr, int(contentW), op.SparkMin, op.SparkMax, style)
+			} else {
+				buf.WriteSparklineMulti(int(absX), int(absY), *op.SparkValuesPtr, int(contentW), h, op.SparkMin, op.SparkMax, style)
+			}
 		}
 
 	case OpHRule:
