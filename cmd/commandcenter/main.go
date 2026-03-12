@@ -90,8 +90,8 @@ func main() {
 		return VBox.Grow(1).Border(BorderRounded).BorderFG(rpOverlay).Title(title)(
 			Sparkline(data).FG(col).Height(
 				If(&sparkExpanded).
-					Then(int16(26)).
-					Else(int16(1)),
+					Then(26).
+					Else(1),
 			),
 			Text(label).FG(rpMuted),
 		)
@@ -118,7 +118,6 @@ func main() {
 			selectedSvc = *svc
 			showModal = true
 			app.Push(modalRouter)
-			app.RequestRender()
 		}).
 		HandleClear("<Esc>", nil)
 
