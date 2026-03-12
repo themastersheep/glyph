@@ -569,6 +569,195 @@ func TestDynamicProperties(t *testing.T) {
 	})
 }
 
+func TestConditionalProperties(t *testing.T) {
+	t.Run("If height bool", func(t *testing.T) {
+		expanded := true
+		tmpl := Build(VBox.Height(If(&expanded).Then(int16(30)).Else(int16(10)))(
+			Text("A"), VBox.Grow(1)(Text("B")),
+		))
+		buf := NewBuffer(40, 40)
+
+		tmpl.Execute(buf, 40, 40)
+		if got := tmpl.geom[0].H; got != 30 {
+			t.Errorf("expanded=true: got H=%d, want 30", got)
+		}
+
+		expanded = false
+		buf.Clear()
+		tmpl.Execute(buf, 40, 40)
+		if got := tmpl.geom[0].H; got != 10 {
+			t.Errorf("expanded=false: got H=%d, want 10", got)
+		}
+	})
+
+	t.Run("If width bool", func(t *testing.T) {
+		wide := true
+		tmpl := Build(HBox(
+			VBox.Width(If(&wide).Then(int16(30)).Else(int16(10)))(Text("X")),
+			VBox.Grow(1)(Text("Y")),
+		))
+		buf := NewBuffer(80, 5)
+
+		tmpl.Execute(buf, 80, 5)
+		if got := tmpl.geom[1].W; got != 30 {
+			t.Errorf("wide=true: got W=%d, want 30", got)
+		}
+
+		wide = false
+		buf.Clear()
+		tmpl.Execute(buf, 80, 5)
+		if got := tmpl.geom[1].W; got != 10 {
+			t.Errorf("wide=false: got W=%d, want 10", got)
+		}
+	})
+
+	t.Run("If grow bool", func(t *testing.T) {
+		primary := true
+		tmpl := Build(HBox(
+			VBox.Grow(If(&primary).Then(float32(3)).Else(float32(1)))(Text("A")),
+			VBox.Grow(1)(Text("B")),
+		))
+		buf := NewBuffer(100, 5)
+
+		tmpl.Execute(buf, 100, 5)
+		if got := tmpl.geom[1].W; got != 75 {
+			t.Errorf("primary=true: got W=%d, want 75", got)
+		}
+
+		primary = false
+		buf.Clear()
+		tmpl.Execute(buf, 100, 5)
+		if got := tmpl.geom[1].W; got != 50 {
+			t.Errorf("primary=false: got W=%d, want 50", got)
+		}
+	})
+
+	t.Run("If with Eq condition", func(t *testing.T) {
+		mode := "compact"
+		tmpl := Build(VBox.Height(If(&mode).Eq("compact").Then(int16(10)).Else(int16(30)))(
+			Text("content"),
+		))
+		buf := NewBuffer(40, 40)
+
+		tmpl.Execute(buf, 40, 40)
+		if got := tmpl.geom[0].H; got != 10 {
+			t.Errorf("mode=compact: got H=%d, want 10", got)
+		}
+
+		mode = "expanded"
+		buf.Clear()
+		tmpl.Execute(buf, 40, 40)
+		if got := tmpl.geom[0].H; got != 30 {
+			t.Errorf("mode=expanded: got H=%d, want 30", got)
+		}
+	})
+
+	t.Run("If with pointer then/else values", func(t *testing.T) {
+		expanded := true
+		bigH := int16(30)
+		smallH := int16(10)
+		tmpl := Build(VBox.Height(If(&expanded).Then(&bigH).Else(&smallH))(
+			Text("content"),
+		))
+		buf := NewBuffer(40, 40)
+
+		tmpl.Execute(buf, 40, 40)
+		if got := tmpl.geom[0].H; got != 30 {
+			t.Errorf("expanded=true: got H=%d, want 30", got)
+		}
+
+		// change the condition
+		expanded = false
+		buf.Clear()
+		tmpl.Execute(buf, 40, 40)
+		if got := tmpl.geom[0].H; got != 10 {
+			t.Errorf("expanded=false: got H=%d, want 10", got)
+		}
+
+		// change the underlying value — both condition and value are dynamic
+		smallH = 15
+		buf.Clear()
+		tmpl.Execute(buf, 40, 40)
+		if got := tmpl.geom[0].H; got != 15 {
+			t.Errorf("smallH changed to 15: got H=%d, want 15", got)
+		}
+	})
+
+	t.Run("If on progress width", func(t *testing.T) {
+		detailed := true
+		val := 50
+		tmpl := Build(VBox(
+			Progress(&val).Width(If(&detailed).Then(int16(40)).Else(int16(20))),
+		))
+		buf := NewBuffer(80, 3)
+
+		tmpl.Execute(buf, 80, 3)
+		if got := tmpl.geom[1].W; got != 40 {
+			t.Errorf("detailed=true: got W=%d, want 40", got)
+		}
+
+		detailed = false
+		buf.Clear()
+		tmpl.Execute(buf, 80, 3)
+		if got := tmpl.geom[1].W; got != 20 {
+			t.Errorf("detailed=false: got W=%d, want 20", got)
+		}
+	})
+
+	t.Run("If on gap", func(t *testing.T) {
+		spacious := true
+		tmpl := Build(VBox.Gap(If(&spacious).Then(int8(3)).Else(int8(0)))(
+			Text("A"), Text("B"),
+		))
+		buf := NewBuffer(40, 20)
+
+		tmpl.Execute(buf, 40, 20)
+		if got := buf.GetLine(0); got != "A" {
+			t.Errorf("line0: got %q, want %q", got, "A")
+		}
+		// gap=3: B should be on line 4
+		if got := buf.GetLine(4); got != "B" {
+			t.Errorf("spacious gap=3, line4: got %q, want %q", got, "B")
+		}
+
+		spacious = false
+		buf.Clear()
+		tmpl.Execute(buf, 40, 20)
+		// gap=0: B should be on line 1
+		if got := buf.GetLine(1); got != "B" {
+			t.Errorf("compact gap=0, line1: got %q, want %q", got, "B")
+		}
+	})
+
+	t.Run("multiple conditionals on same op", func(t *testing.T) {
+		big := true
+		tmpl := Build(HBox(
+			VBox.Width(If(&big).Then(int16(40)).Else(int16(20))).Height(If(&big).Then(int16(30)).Else(int16(10)))(
+				Text("content"),
+			),
+		))
+		buf := NewBuffer(80, 40)
+
+		tmpl.Execute(buf, 80, 40)
+		if got := tmpl.geom[1].W; got != 40 {
+			t.Errorf("big=true: W=%d, want 40", got)
+		}
+		if got := tmpl.geom[1].H; got != 30 {
+			t.Errorf("big=true: H=%d, want 30", got)
+		}
+
+		big = false
+		buf.Clear()
+		tmpl.Execute(buf, 80, 40)
+		if got := tmpl.geom[1].W; got != 20 {
+			t.Errorf("big=false: W=%d, want 20", got)
+		}
+		if got := tmpl.geom[1].H; got != 10 {
+			t.Errorf("big=false: H=%d, want 10", got)
+		}
+	})
+}
+
 func TestV2IfDynamic(t *testing.T) {
 	showDetails := true
 

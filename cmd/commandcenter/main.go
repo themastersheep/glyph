@@ -74,6 +74,7 @@ func main() {
 	var selectedPtr *service
 	selectedSvc := services[0]
 	showModal := false
+	sparkExpanded := false
 	restarting := false
 	restartPct := 0
 
@@ -87,7 +88,11 @@ func main() {
 
 	metricPanel := func(title string, data *[]float64, label *string, col Color) any {
 		return VBox.Grow(1).Border(BorderRounded).BorderFG(rpOverlay).Title(title)(
-			Sparkline(data).FG(col),
+			Sparkline(data).FG(col).Height(
+				If(&sparkExpanded).
+					Then(int16(26)).
+					Else(int16(1)),
+			),
 			Text(label).FG(rpMuted),
 		)
 	}
@@ -156,7 +161,7 @@ func main() {
 				),
 
 				HRule().Char(BorderDouble.Horizontal).FG(rpOverlay),
-				Text("press [ctrl+c] to quit  [enter] to inspect  [r] restart (modal)").FG(rpMuted),
+				Text("press [ctrl+c] to quit  [enter] inspect  [s] expand sparklines  [r] restart (modal)").FG(rpMuted),
 
 				If(&showModal).Then(OverlayNode{
 					Centered: true,
@@ -212,8 +217,11 @@ func main() {
 		),
 	)
 
-	app.Handle("<C-c>", func(_ riffkey.Match) { app.Stop() })
-	app.Handle("<Escape>", func(_ riffkey.Match) {})
+	app.Handle("<C-c>", func() { app.Stop() })
+	app.Handle("<Escape>", func() {})
+	app.Handle("<C-s>", func() {
+		sparkExpanded = !sparkExpanded
+	})
 
 	closeModal := func() {
 		showModal = false

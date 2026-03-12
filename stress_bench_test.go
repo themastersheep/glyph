@@ -716,3 +716,86 @@ func BenchmarkDynamicDashboard(b *testing.B) {
 		serial.Execute(buf, 120, 60)
 	}
 }
+
+// === Conditional property benchmarks ===
+
+// BenchmarkConditionalHeight - height driven by If condition
+func BenchmarkConditionalHeight(b *testing.B) {
+	buf := NewBuffer(80, 50)
+	content := "content"
+	expanded := true
+
+	ui := VBox.Height(If(&expanded).Then(int16(50)).Else(int16(20)))(
+		Text("Header"),
+		VBox.Height(If(&expanded).Then(int16(10)).Else(int16(5))).Border(BorderSingle).Title("A").Grow(1)(
+			Text(&content),
+		),
+		VBox.Height(If(&expanded).Then(int16(10)).Else(int16(5))).Border(BorderSingle).Title("B").Grow(2)(
+			Text(&content),
+		),
+		VBox.Height(If(&expanded).Then(int16(10)).Else(int16(5))).Border(BorderSingle).Title("C").Grow(1)(
+			Text(&content),
+		),
+		Text("Footer"),
+	)
+
+	serial := Build(ui)
+	buf.Clear()
+	serial.Execute(buf, 80, 50)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		expanded = i%2 == 0
+		buf.ClearDirty()
+		serial.Execute(buf, 80, 50)
+	}
+}
+
+// BenchmarkConditionalDashboard - dashboard with multiple conditional properties
+func BenchmarkConditionalDashboard(b *testing.B) {
+	buf := NewBuffer(120, 60)
+	content := "status: ok"
+	detailed := true
+
+	items := make([]StressItem, 20)
+	for i := range items {
+		items[i] = StressItem{
+			Name: "svc-" + string(rune('A'+i)),
+			CPU:  float32(i) / 20.0,
+		}
+	}
+
+	ui := VBox.Height(60)(
+		Text("Dashboard"),
+		HBox.Height(If(&detailed).Then(int16(30)).Else(int16(10)))(
+			VBox.Width(If(&detailed).Then(int16(50)).Else(int16(30))).Border(BorderSingle).Title("LEFT")(
+				Text(&content),
+				ForEach(&items, func(item *StressItem) any {
+					return HBox(
+						Text(&item.Name),
+						Progress(&item.CPU).Width(If(&detailed).Then(int16(30)).Else(int16(15))),
+					)
+				}),
+			),
+			VBox.Grow(1).Border(BorderSingle).Title("RIGHT")(
+				Text(&content),
+			),
+		),
+		VBox.Grow(1).Border(BorderSingle).Title("BOTTOM")(
+			Text(&content),
+		),
+	)
+
+	serial := Build(ui)
+	buf.Clear()
+	serial.Execute(buf, 120, 60)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		detailed = i%2 == 0
+		buf.ClearDirty()
+		serial.Execute(buf, 120, 60)
+	}
+}

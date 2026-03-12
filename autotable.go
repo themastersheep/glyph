@@ -334,6 +334,7 @@ type AutoTableC struct {
 	border      BorderStyle
 	margin      [4]int16
 	gapPtr      *int8
+	gapCond     conditionNode
 
 	columnConfigs map[string]ColumnOption // per-column config keyed by field name
 
@@ -412,6 +413,8 @@ func (t AutoTableC) Gap(g any) AutoTableC {
 		t.gap = int8(val)
 	case *int8:
 		t.gapPtr = val
+	case conditionNode:
+		t.gapCond = val
 	}
 	return t
 }

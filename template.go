@@ -128,6 +128,9 @@ type Template struct {
 	pendingTIB          *textInputBinding
 	pendingLogs         []*LogC       // Logs that need app.RequestRender wiring
 	pendingFocusManager *FocusManager // Focus manager for multi-input routing
+
+	// per-frame evaluators — conditions, animations, etc. run at start of Execute
+	evals []func()
 }
 
 // pendingOverlay stores info needed to render an overlay after main content
@@ -268,6 +271,95 @@ func (op *Op) gap() int8 {
 		}
 	}
 	return op.Gap
+}
+
+// compileCond registers a conditional evaluator and returns a pointer to its storage.
+// the evaluator runs each frame, resolving the condition and writing the active value.
+
+func (t *Template) compileCondInt16(cond conditionNode) *int16 {
+	storage := new(int16)
+	thenVal := cond.getThen()
+	elseVal := cond.getElse()
+	eval := func() {
+		if cond.evaluate() {
+			*storage = anyToInt16(thenVal)
+		} else {
+			*storage = anyToInt16(elseVal)
+		}
+	}
+	eval() // set initial value
+	t.evals = append(t.evals, eval)
+	return storage
+}
+
+func (t *Template) compileCondFloat32(cond conditionNode) *float32 {
+	storage := new(float32)
+	thenVal := cond.getThen()
+	elseVal := cond.getElse()
+	eval := func() {
+		if cond.evaluate() {
+			*storage = anyToFloat32(thenVal)
+		} else {
+			*storage = anyToFloat32(elseVal)
+		}
+	}
+	eval()
+	t.evals = append(t.evals, eval)
+	return storage
+}
+
+func (t *Template) compileCondInt8(cond conditionNode) *int8 {
+	storage := new(int8)
+	thenVal := cond.getThen()
+	elseVal := cond.getElse()
+	eval := func() {
+		if cond.evaluate() {
+			*storage = anyToInt8(thenVal)
+		} else {
+			*storage = anyToInt8(elseVal)
+		}
+	}
+	eval()
+	t.evals = append(t.evals, eval)
+	return storage
+}
+
+func anyToInt16(v any) int16 {
+	switch val := v.(type) {
+	case int16:
+		return val
+	case int:
+		return int16(val)
+	case *int16:
+		return *val
+	}
+	return 0
+}
+
+func anyToFloat32(v any) float32 {
+	switch val := v.(type) {
+	case float32:
+		return val
+	case float64:
+		return float32(val)
+	case int:
+		return float32(val)
+	case *float32:
+		return *val
+	}
+	return 0
+}
+
+func anyToInt8(v any) int8 {
+	switch val := v.(type) {
+	case int8:
+		return val
+	case int:
+		return int8(val)
+	case *int8:
+		return *val
+	}
+	return 0
 }
 
 // opSparkline holds sparkline-specific data.
@@ -1422,11 +1514,24 @@ func (t *Template) compileForEach(items any, render any, parent int16, depth int
 // ============================================================================
 
 func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
+	f := flex{percentWidth: v.percentWidth, width: v.width, height: v.height, flexGrow: v.flexGrow, fitContent: v.fitContent, widthPtr: v.widthPtr, heightPtr: v.heightPtr, percentWidthPtr: v.percentWidthPtr, flexGrowPtr: v.flexGrowPtr}
+	if v.heightCond != nil {
+		f.heightPtr = t.compileCondInt16(v.heightCond)
+	}
+	if v.widthCond != nil {
+		f.widthPtr = t.compileCondInt16(v.widthCond)
+	}
+	if v.percentWidthCond != nil {
+		f.percentWidthPtr = t.compileCondFloat32(v.percentWidthCond)
+	}
+	if v.flexGrowCond != nil {
+		f.flexGrowPtr = t.compileCondFloat32(v.flexGrowCond)
+	}
 	idx := t.compileContainer(
 		v.children,
 		v.gap,
 		false, // isRow
-		flex{percentWidth: v.percentWidth, width: v.width, height: v.height, flexGrow: v.flexGrow, fitContent: v.fitContent, widthPtr: v.widthPtr, heightPtr: v.heightPtr, percentWidthPtr: v.percentWidthPtr, flexGrowPtr: v.flexGrowPtr},
+		f,
 		v.border,
 		v.title,
 		v.borderFG,
@@ -1447,16 +1552,35 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 			t.ops[idx].Dyn = &OpDyn{}
 		}
 		t.ops[idx].Dyn.Gap = v.gapPtr
+	}
+	if v.gapCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Gap = t.compileCondInt8(v.gapCond)
 	}
 	return idx
 }
 
 func (t *Template) compileHBoxC(v HBoxC, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
+	f := flex{percentWidth: v.percentWidth, width: v.width, height: v.height, flexGrow: v.flexGrow, fitContent: v.fitContent, widthPtr: v.widthPtr, heightPtr: v.heightPtr, percentWidthPtr: v.percentWidthPtr, flexGrowPtr: v.flexGrowPtr}
+	if v.heightCond != nil {
+		f.heightPtr = t.compileCondInt16(v.heightCond)
+	}
+	if v.widthCond != nil {
+		f.widthPtr = t.compileCondInt16(v.widthCond)
+	}
+	if v.percentWidthCond != nil {
+		f.percentWidthPtr = t.compileCondFloat32(v.percentWidthCond)
+	}
+	if v.flexGrowCond != nil {
+		f.flexGrowPtr = t.compileCondFloat32(v.flexGrowCond)
+	}
 	idx := t.compileContainer(
 		v.children,
 		v.gap,
 		true, // isRow
-		flex{percentWidth: v.percentWidth, width: v.width, height: v.height, flexGrow: v.flexGrow, fitContent: v.fitContent, widthPtr: v.widthPtr, heightPtr: v.heightPtr, percentWidthPtr: v.percentWidthPtr, flexGrowPtr: v.flexGrowPtr},
+		f,
 		v.border,
 		v.title,
 		v.borderFG,
@@ -1477,6 +1601,12 @@ func (t *Template) compileHBoxC(v HBoxC, parent int16, depth int, elemBase unsaf
 			t.ops[idx].Dyn = &OpDyn{}
 		}
 		t.ops[idx].Dyn.Gap = v.gapPtr
+	}
+	if v.gapCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Gap = t.compileCondInt8(v.gapCond)
 	}
 	return idx
 }
@@ -1508,7 +1638,12 @@ func (t *Template) compileTextC(v TextC, parent int16, depth int, elemBase unsaf
 		Margin: v.style.margin,
 		Ext:    ext,
 	}, depth)
-	if v.widthPtr != nil {
+	if v.widthCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Width = t.compileCondInt16(v.widthCond)
+	} else if v.widthPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
@@ -1519,7 +1654,7 @@ func (t *Template) compileTextC(v TextC, parent int16, depth int, elemBase unsaf
 
 func (t *Template) compileSpacerC(v SpacerC, parent int16, depth int) int16 {
 	grow := v.flexGrow
-	if grow == 0 && v.width == 0 && v.height == 0 && v.widthPtr == nil && v.heightPtr == nil && v.flexGrowPtr == nil {
+	if grow == 0 && v.width == 0 && v.height == 0 && v.widthPtr == nil && v.heightPtr == nil && v.flexGrowPtr == nil && v.widthCond == nil && v.heightCond == nil && v.flexGrowCond == nil {
 		grow = 1
 	}
 	ext := &opRule{char: v.char, style: v.style}
@@ -1532,17 +1667,24 @@ func (t *Template) compileSpacerC(v SpacerC, parent int16, depth int) int16 {
 		Margin:   v.style.margin,
 		Ext:      ext,
 	}, depth)
-	if v.widthPtr != nil || v.heightPtr != nil || v.flexGrowPtr != nil {
+	hasDyn := v.widthPtr != nil || v.heightPtr != nil || v.flexGrowPtr != nil || v.widthCond != nil || v.heightCond != nil || v.flexGrowCond != nil
+	if hasDyn {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
-		if v.widthPtr != nil {
+		if v.widthCond != nil {
+			t.ops[idx].Dyn.Width = t.compileCondInt16(v.widthCond)
+		} else if v.widthPtr != nil {
 			t.ops[idx].Dyn.Width = v.widthPtr
 		}
-		if v.heightPtr != nil {
+		if v.heightCond != nil {
+			t.ops[idx].Dyn.Height = t.compileCondInt16(v.heightCond)
+		} else if v.heightPtr != nil {
 			t.ops[idx].Dyn.Height = v.heightPtr
 		}
-		if v.flexGrowPtr != nil {
+		if v.flexGrowCond != nil {
+			t.ops[idx].Dyn.FlexGrow = t.compileCondFloat32(v.flexGrowCond)
+		} else if v.flexGrowPtr != nil {
 			t.ops[idx].Dyn.FlexGrow = v.flexGrowPtr
 		}
 	}
@@ -1576,7 +1718,12 @@ func (t *Template) compileVRuleC(v VRuleC, parent int16, depth int) int16 {
 		Margin: v.style.margin,
 		Ext:    ext,
 	}, depth)
-	if v.heightPtr != nil {
+	if v.heightCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Height = t.compileCondInt16(v.heightCond)
+	} else if v.heightPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
@@ -1614,7 +1761,12 @@ func (t *Template) compileProgressC(v ProgressC, parent int16, depth int, elemBa
 		Margin: v.style.margin,
 		Ext:    ext,
 	}, depth)
-	if v.widthPtr != nil {
+	if v.widthCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Width = t.compileCondInt16(v.widthCond)
+	} else if v.widthPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
@@ -1683,7 +1835,12 @@ func (t *Template) compileLeaderC(v LeaderC, parent int16, depth int) int16 {
 		Margin: v.style.margin,
 		Ext:    ext,
 	}, depth)
-	if v.widthPtr != nil {
+	if v.widthCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Width = t.compileCondInt16(v.widthCond)
+	} else if v.widthPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
@@ -1727,14 +1884,19 @@ func (t *Template) compileSparklineC(v SparklineC, parent int16, depth int) int1
 		Ext:    ext,
 	}
 	idx := t.addOp(op, depth)
-	if v.widthPtr != nil || v.heightPtr != nil {
+	hasDyn := v.widthPtr != nil || v.heightPtr != nil || v.widthCond != nil || v.heightCond != nil
+	if hasDyn {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
-		if v.widthPtr != nil {
+		if v.widthCond != nil {
+			t.ops[idx].Dyn.Width = t.compileCondInt16(v.widthCond)
+		} else if v.widthPtr != nil {
 			t.ops[idx].Dyn.Width = v.widthPtr
 		}
-		if v.heightPtr != nil {
+		if v.heightCond != nil {
+			t.ops[idx].Dyn.Height = t.compileCondInt16(v.heightCond)
+		} else if v.heightPtr != nil {
 			t.ops[idx].Dyn.Height = v.heightPtr
 		}
 	}
@@ -1768,7 +1930,12 @@ func (t *Template) compileLayerViewC(v LayerViewC, parent int16, depth int) int1
 		Margin:   v.margin,
 		Ext:      ext,
 	}, depth)
-	if v.flexGrowPtr != nil {
+	if v.flexGrowCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.FlexGrow = t.compileCondFloat32(v.flexGrowCond)
+	} else if v.flexGrowPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
@@ -1827,7 +1994,12 @@ func (t *Template) compileTabsC(v TabsC, parent int16, depth int) int16 {
 		Margin: v.margin,
 		Ext:    ext,
 	}, depth)
-	if v.gapPtr != nil {
+	if v.gapCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Gap = t.compileCondInt8(v.gapCond)
+	} else if v.gapPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
@@ -1967,7 +2139,12 @@ func (t *Template) compileAutoTableReactive(v AutoTableC, rv reflect.Value, pare
 		Margin: v.margin,
 		Ext:    ext,
 	}, depth)
-	if v.gapPtr != nil {
+	if v.gapCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Gap = t.compileCondInt8(v.gapCond)
+	} else if v.gapPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
@@ -2112,9 +2289,11 @@ func (t *Template) compileAutoTableStatic(v AutoTableC, rv reflect.Value, parent
 		}
 		headerCells = append(headerCells, Text(h).Width(int16(widths[i])).Style(hdrStyle))
 	}
-	// use pointer gap if set, otherwise static value
+	// use cond > pointer > static gap
 	var tableGap any
-	if v.gapPtr != nil {
+	if v.gapCond != nil {
+		tableGap = v.gapCond
+	} else if v.gapPtr != nil {
 		tableGap = v.gapPtr
 	} else {
 		tableGap = v.gap
@@ -2207,9 +2386,11 @@ func (t *Template) compileRadioC(v *RadioC, parent int16, depth int) int16 {
 		items = append(items, item)
 	}
 
-	// use pointer gap if set, otherwise static value
+	// use cond > pointer > static gap
 	var gap any
-	if v.gapPtr != nil {
+	if v.gapCond != nil {
+		gap = v.gapCond
+	} else if v.gapPtr != nil {
 		gap = v.gapPtr
 	} else {
 		gap = v.gap
@@ -2229,7 +2410,12 @@ func (t *Template) compileInputC(v *InputC, parent int16, depth int) int16 {
 	// Convert to TextInput and compile
 	ti := v.toTextInput()
 	idx := t.compile(ti, parent, depth, nil, 0)
-	if v.widthPtr != nil {
+	if v.widthCond != nil {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Width = t.compileCondInt16(v.widthCond)
+	} else if v.widthPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
@@ -2243,6 +2429,11 @@ func (t *Template) Execute(buf *Buffer, screenW, screenH int16) {
 	// Clear pending from previous frame
 	t.pendingOverlays = t.pendingOverlays[:0]
 	t.pendingScreenEffects = t.pendingScreenEffects[:0]
+
+	// Phase 0: Evaluate reactive bindings (conditions, animations)
+	for _, eval := range t.evals {
+		eval()
+	}
 
 	// Phase 1: Width distribution (top → down)
 	t.distributeWidths(screenW, nil)

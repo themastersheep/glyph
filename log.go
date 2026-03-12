@@ -13,9 +13,10 @@ type LogC struct {
 	onUpdate   func() // called when new lines arrive (for RequestRender)
 
 	// layout
-	grow        float32
-	margin      [4]int16
-	flexGrowPtr *float32
+	grow         float32
+	margin       [4]int16
+	flexGrowPtr  *float32
+	flexGrowCond conditionNode
 
 	// key bindings
 	declaredBindings []binding
@@ -69,6 +70,8 @@ func (lv *LogC) Grow(g any) *LogC {
 		lv.grow = float32(val)
 	case *float32:
 		lv.flexGrowPtr = val
+	case conditionNode:
+		lv.flexGrowCond = val
 	}
 	return lv
 }
@@ -255,7 +258,9 @@ func (t *Template) compileLogC(lv *LogC, parent int16, depth int) int16 {
 
 	// compile as LayerView with the internal layer
 	var layerView LayerViewC
-	if lv.flexGrowPtr != nil {
+	if lv.flexGrowCond != nil {
+		layerView = LayerView(lv.layer).Grow(lv.flexGrowCond)
+	} else if lv.flexGrowPtr != nil {
 		layerView = LayerView(lv.layer).Grow(lv.flexGrowPtr)
 	} else {
 		layerView = LayerView(lv.layer).Grow(lv.grow)

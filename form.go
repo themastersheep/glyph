@@ -26,16 +26,18 @@ func Field(label string, control any) FormField {
 }
 
 type FormC struct {
-	fields      []FormField
-	fm          *FocusManager
-	gap         int8
-	labelWidth  int16
-	labelStyle  Style
-	grow        float32
-	margin      [4]int16
-	onSubmit    func()
-	gapPtr      *int8
-	flexGrowPtr *float32
+	fields       []FormField
+	fm           *FocusManager
+	gap          int8
+	labelWidth   int16
+	labelStyle   Style
+	grow         float32
+	margin       [4]int16
+	onSubmit     func()
+	gapPtr       *int8
+	flexGrowPtr  *float32
+	gapCond      conditionNode
+	flexGrowCond conditionNode
 }
 
 type FormFn func(fields ...FormField) *FormC
@@ -126,6 +128,8 @@ func (f FormFn) Gap(g any) FormFn {
 			form.gap = int8(val)
 		case *int8:
 			form.gapPtr = val
+		case conditionNode:
+			form.gapCond = val
 		}
 		return form
 	}
@@ -207,6 +211,8 @@ func (f FormFn) Grow(g any) FormFn {
 			form.grow = float32(val)
 		case *float32:
 			form.flexGrowPtr = val
+		case conditionNode:
+			form.flexGrowCond = val
 		}
 		return form
 	}
@@ -286,12 +292,16 @@ func (f *FormC) toTemplate() any {
 	}
 
 	var box VBoxFn
-	if f.gapPtr != nil {
+	if f.gapCond != nil {
+		box = VBox.Gap(f.gapCond)
+	} else if f.gapPtr != nil {
 		box = VBox.Gap(f.gapPtr)
 	} else {
 		box = VBox.Gap(f.gap)
 	}
-	if f.flexGrowPtr != nil {
+	if f.flexGrowCond != nil {
+		box = box.Grow(f.flexGrowCond)
+	} else if f.flexGrowPtr != nil {
 		box = box.Grow(f.flexGrowPtr)
 	} else if f.grow > 0 {
 		box = box.Grow(f.grow)

@@ -14,9 +14,10 @@ type FilterLogC struct {
 	lastQuery   string
 
 	// layout
-	grow        float32
-	margin      [4]int16
-	flexGrowPtr *float32
+	grow         float32
+	margin       [4]int16
+	flexGrowPtr  *float32
+	flexGrowCond conditionNode
 
 	// focus management
 	focused bool
@@ -77,7 +78,9 @@ func (fl *FilterLogC) toTemplate() any {
 	}
 
 	box := VBox
-	if fl.flexGrowPtr != nil {
+	if fl.flexGrowCond != nil {
+		box = box.Grow(fl.flexGrowCond)
+	} else if fl.flexGrowPtr != nil {
 		box = box.Grow(fl.flexGrowPtr)
 	} else if fl.grow > 0 {
 		box = box.Grow(fl.grow)
@@ -125,6 +128,9 @@ func (fl *FilterLogC) Grow(g any) *FilterLogC {
 	case *float32:
 		fl.flexGrowPtr = val
 		fl.log.flexGrowPtr = val
+	case conditionNode:
+		fl.flexGrowCond = val
+		fl.log.flexGrowCond = val
 	}
 	return fl
 }
