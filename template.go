@@ -459,7 +459,7 @@ func (t *Template) compileDynFloat64(v any) *float64 {
 	case conditionNode:
 		return t.compileCondFloat64(c)
 	case tweenNode:
-		return t.compileTweenFloat64(c)
+		return t.compileTweenFloat64(c, nil)
 	}
 	return nil
 }
@@ -694,7 +694,7 @@ func (t *Template) compileTweenFloat32(tw tweenNode) *float32 {
 	return storage
 }
 
-func (t *Template) compileTweenFloat64(tw tweenNode) *float64 {
+func (t *Template) compileTweenFloat64(tw tweenNode, armed *bool) *float64 {
 	root := t.evalRoot()
 	watchPtr := t.resolveTweenTargetFloat64(tw.getTarget())
 	storage := new(float64)
@@ -707,15 +707,43 @@ func (t *Template) compileTweenFloat64(tw tweenNode) *float64 {
 	var startTime time.Time
 	needsFirstFrame := false
 
+	var fromVal float64
 	if from := tw.getTweenFrom(); from != nil {
-		*storage = anyToFloat64(from)
-		startVal = *storage
+		fromVal = anyToFloat64(from)
+		*storage = fromVal
+		startVal = fromVal
 		needsFirstFrame = true
 	}
+
+	// tracks whether resolve() was called last frame (effect was active)
+	wasActive := armed == nil // nil armed = always active (non-effect tweens)
 
 	root.evals = append(root.evals, func() {
 		target := *watchPtr
 		now := root.frameTime
+
+		// activation gating: From tweens in screen effects wait for resolve()
+		if armed != nil {
+			active := *armed
+			*armed = false // reset each frame; resolve() re-sets if still active
+
+			if !active {
+				wasActive = false
+				return
+			}
+
+			if !wasActive {
+				// inactive → active transition: (re)start From animation
+				wasActive = true
+				*storage = fromVal
+				startVal = fromVal
+				lastTarget = target
+				startTime = now
+				needsFirstFrame = false
+				goto interpolate
+			}
+		}
+
 		if needsFirstFrame {
 			startVal = *storage
 			lastTarget = target
@@ -726,6 +754,8 @@ func (t *Template) compileTweenFloat64(tw tweenNode) *float64 {
 			lastTarget = target
 			startTime = now
 		}
+
+	interpolate:
 		if startTime.IsZero() {
 			return
 		}

@@ -5220,7 +5220,9 @@ func TestAnimate(t *testing.T) {
 
 	t.Run("SE strength inside If branch", func(t *testing.T) {
 		// the actual bug: ScreenEffect inside If().Then(Overlay(...)) — evaluators
-		// must propagate to root template via evalRoot()
+		// must propagate to root template via evalRoot().
+		// From tweens in conditional branches are armed by resolve() — there's a
+		// one-frame warmup before the animation starts (imperceptible in practice).
 		active := true
 		tmpl := Build(VBox(
 			Text("X").FG(RGB(200, 200, 200)),
@@ -5240,7 +5242,11 @@ func TestAnimate(t *testing.T) {
 			}
 		}
 
-		// frame 1
+		// warmup frame: arms the tween (resolve() called, sets armed=true)
+		tmpl.Execute(buf, 10, 10)
+		applyEffects()
+
+		// frame 1: activation — tween starts, strength~0
 		tmpl.Execute(buf, 10, 10)
 		applyEffects()
 		fg1 := buf.Get(0, 0).Style.FG

@@ -213,7 +213,7 @@ func main() {
 							SEVignette().Dodge(&popupRef).Smooth().
 								Strength(anim(0.88)),
 							// SEDropShadow().Focus(&popupRef),
-							SEGlow().Focus(&popupRef).Brightness(1.1),
+							SEGlow().Focus(&popupRef).Brightness(anim(1.1)),
 						),
 					),
 				}),

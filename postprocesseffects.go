@@ -5,9 +5,10 @@ import "math"
 // dynFloat64 bundles a static float64 with optional dynamic source (pointer,
 // condition, or tween). replaces the repeated 3-field pattern across effects.
 type dynFloat64 struct {
-	val float64
-	dyn any
-	ptr *float64
+	val   float64
+	dyn   any
+	ptr   *float64
+	armed *bool // non-nil for From tweens — resolve() sets true, tween waits for it
 }
 
 func (d *dynFloat64) set(v any) {
@@ -28,12 +29,24 @@ func (d *dynFloat64) set(v any) {
 }
 
 func (d *dynFloat64) compile(tmpl *Template) {
-	if d.dyn != nil {
+	if d.dyn == nil {
+		return
+	}
+	// From tweens inside conditional/overlay branches need arming — the
+	// animation should start when the branch activates, not at compile time.
+	// top-level From tweens (root==nil) fire immediately as before.
+	if tw, ok := d.dyn.(tweenNode); ok && tw.getTweenFrom() != nil && tmpl.root != nil {
+		d.armed = new(bool)
+		d.ptr = tmpl.compileTweenFloat64(tw, d.armed)
+	} else {
 		d.ptr = tmpl.compileDynFloat64(d.dyn)
 	}
 }
 
 func (d dynFloat64) resolve() float64 {
+	if d.armed != nil {
+		*d.armed = true
+	}
 	if d.ptr != nil {
 		return *d.ptr
 	}
