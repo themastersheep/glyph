@@ -20,7 +20,7 @@ var (
 	rpText    = Hex(0xe0def4)
 	rpSubtle  = Hex(0x908caa)
 	rpMuted   = Hex(0x6e6a86)
-	// rpLove    = Hex(0xeb6f92)
+	rpLove = Hex(0xeb6f92)
 	rpGold = Hex(0xf6c177)
 	rpFoam = Hex(0x9ccfd8)
 	rpIris = Hex(0xc4a7e7)
@@ -35,25 +35,29 @@ type service struct {
 	CPUHistory []float64
 }
 
+func lerp(a, b, t float64) float64 { return a + (b-a)*t }
+
 func main() {
 	reqData := make([]float64, 40)
 	latData := make([]float64, 40)
 	errData := make([]float64, 40)
+	// pre-seed sparkline history: healthy on left, degrading toward right
 	for i := range reqData {
-		reqData[i] = 80 + rand.Float64()*60 + 30*math.Sin(float64(i)*0.2)
-		latData[i] = 18 + rand.Float64()*12 + 6*math.Sin(float64(i)*0.15)
-		errData[i] = rand.Float64() * 3
+		blend := math.Min(1, float64(i)/float64(len(reqData)-1)*1.5)
+		reqData[i] = lerp(125, 50, blend)
+		latData[i] = lerp(22, 60, blend)
+		errData[i] = lerp(0.8, 6, blend)
 	}
 
-	reqRate := "142 req/s"
-	p99Lat := "24ms"
-	errRate := "0.4%"
+	reqRate := "52 req/s"
+	p99Lat := "58ms"
+	errRate := "5.8%"
 	clock := time.Now().Format("15:04:05")
 
 	services := []service{
 		{Name: "api-gateway", Status: "live", CPU: 7.2, CPUStr: "  7.2%", Mem: "240 MB"},
 		{Name: "postgres-primary", Status: "live", CPU: 3.8, CPUStr: "  3.8%", Mem: "1.2 GB"},
-		{Name: "redis-cluster", Status: "warn", CPU: 6.1, CPUStr: "  6.1%", Mem: "380 MB"},
+		{Name: "redis-cluster", Status: "warn", CPU: 19.5, CPUStr: " 19.5%", Mem: "380 MB"},
 		{Name: "worker-pool", Status: "live", CPU: 4.9, CPUStr: "  4.9%", Mem: "190 MB"},
 		{Name: "cdn-edge", Status: "live", CPU: 1.1, CPUStr: "  1.1%", Mem: " 42 MB"},
 		{Name: "auth-service", Status: "live", CPU: 5.4, CPUStr: "  5.4%", Mem: "128 MB"},
@@ -61,7 +65,11 @@ func main() {
 	for i := range services {
 		services[i].CPUHistory = make([]float64, 20)
 		for j := range services[i].CPUHistory {
-			services[i].CPUHistory[j] = services[i].CPU + rand.Float64()*5 - 2.5
+			if services[i].Status == "warn" {
+				services[i].CPUHistory[j] = 15 + rand.Float64()*10
+			} else {
+				services[i].CPUHistory[j] = services[i].CPU + rand.Float64()*5 - 2.5
+			}
 		}
 	}
 
@@ -78,6 +86,8 @@ func main() {
 	restarting := false
 	restartPct := 0
 
+	degraded := true
+
 	pulseStyle := Style{}
 	var modalRouter *riffkey.Router
 	app, err := NewApp()
@@ -86,7 +96,9 @@ func main() {
 	}
 	app.JumpKey("g")
 
-	metricPanel := func(title string, data *[]float64, label *string, col Color) any {
+	colorAnim := Animate.Duration(2 * time.Second).Ease(EaseOutCubic)
+
+	metricPanel := func(title string, data *[]float64, label *string, col any) any {
 		return VBox.Grow(1).Border(BorderRounded).BorderFG(rpOverlay).Title(title)(
 			Sparkline(data).FG(col).Height(
 				Animate.Duration(200*time.Millisecond).Ease(EaseOutCubic)(
@@ -123,7 +135,7 @@ func main() {
 		}).
 		HandleClear("<Esc>", nil)
 
-	anim := Animate.Duration(1 * time.Second).From(0.0)
+	anim := Animate.Duration(900 * time.Millisecond).Ease(EaseOutCubic).From(0.0)
 
 	var popupRef NodeRef
 	app.SetView(
@@ -138,9 +150,9 @@ func main() {
 				HRule().Char(BorderDouble.Horizontal).FG(rpOverlay),
 
 				HBox.Gap(1)(
-					metricPanel("requests/s", &reqData, &reqRate, rpFoam),
-					metricPanel("p99 latency", &latData, &p99Lat, rpIris),
-					metricPanel("error rate", &errData, &errRate, rpGold),
+					metricPanel("requests/s", &reqData, &reqRate, colorAnim(If(&degraded).Then(rpGold).Else(rpFoam))),
+					metricPanel("p99 latency", &latData, &p99Lat, colorAnim(If(&degraded).Then(rpLove).Else(rpIris))),
+					metricPanel("error rate", &errData, &errRate, colorAnim(If(&degraded).Then(rpLove).Else(rpGold))),
 				),
 
 				HBox.Grow(1).Gap(1)(
@@ -168,7 +180,7 @@ func main() {
 
 				If(&showModal).Then(OverlayNode{
 					Centered: true,
-					Child: VBox.Gap(0).Width(46).Fill(rpSurface).NodeRef(&popupRef)(
+					Child: VBox.Opacity(1.0).Gap(0).Width(46).Fill(rpSurface).NodeRef(&popupRef)(
 						SpaceH(1),
 						HBox(
 							If(&selectedSvc.Status).Eq("warn").
@@ -210,10 +222,9 @@ func main() {
 							),
 						SpaceH(1),
 						ScreenEffect(
-							SEVignette().Dodge(&popupRef).Smooth().
-								Strength(anim(0.88)),
-							// SEDropShadow().Focus(&popupRef),
-							SEGlow().Focus(&popupRef).Brightness(anim(1.1)),
+							SEVignette().Dodge(&popupRef).Smooth().Strength(anim(0.88)),
+							// SEDropShadow().Focus(&popupRef).Strength(anim(0.8)),
+							SEGlow().Focus(&popupRef).Brightness(1.1).Strength(anim(0.5)),
 						),
 					),
 				}),
@@ -255,6 +266,7 @@ func main() {
 			selectedSvc.Status = "live"
 			if selectedPtr != nil {
 				selectedPtr.Status = "live"
+				selectedPtr.CPU = 4.0 + rand.Float64()*2
 			}
 			closeModal()
 		}()
@@ -264,11 +276,26 @@ func main() {
 	go func() {
 		for range time.NewTicker(400 * time.Millisecond).C {
 			tick++
-			t := float64(tick)
 
-			rps := 80 + rand.Float64()*60 + 30*math.Sin(t*0.2)
-			lat := 18 + rand.Float64()*12 + 6*math.Sin(t*0.15)
-			er := rand.Float64() * 3
+			// check if any service is degraded
+			hasDegraded := false
+			for _, s := range services {
+				if s.Status == "warn" {
+					hasDegraded = true
+					break
+				}
+			}
+
+			var rps, lat, er float64
+			if hasDegraded {
+				rps = 50 + rand.Float64()*2
+				lat = 60 + rand.Float64()*2
+				er = 6 + rand.Float64()*0.3
+			} else {
+				rps = 125 + rand.Float64()*2
+				lat = 22 + rand.Float64()*2
+				er = 0.8 + rand.Float64()*0.3
+			}
 
 			copy(reqData, reqData[1:])
 			reqData[len(reqData)-1] = rps
@@ -282,8 +309,15 @@ func main() {
 			errRate = fmt.Sprintf("%.1f%%", er)
 			clock = time.Now().Format("15:04:05")
 
+			degraded = hasDegraded
+
 			for i := range services {
-				services[i].CPU = math.Max(0.5, services[i].CPU+rand.Float64()*2-1)
+				if services[i].Name == "redis-cluster" && services[i].Status == "warn" {
+					// redis stays stressed while degraded
+					services[i].CPU = math.Max(15, math.Min(25, services[i].CPU+rand.Float64()*4-2))
+				} else {
+					services[i].CPU = math.Max(0.5, services[i].CPU+rand.Float64()*2-1)
+				}
 				services[i].CPUStr = fmt.Sprintf("%5.1f%%", services[i].CPU)
 				copy(services[i].CPUHistory, services[i].CPUHistory[1:])
 				services[i].CPUHistory[len(services[i].CPUHistory)-1] = services[i].CPU

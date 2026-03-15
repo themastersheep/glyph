@@ -83,6 +83,7 @@ type VBoxC struct {
 	localStyle       *Style
 	localStylePtr    *Style
 	localStyleCond   any
+	opacity          dynFloat64
 	children        []any
 }
 
@@ -121,6 +122,16 @@ func (f VBoxFn) Style(s any) VBoxFn {
 		case tweenNode:
 			v.localStyleCond = val
 		}
+		return v
+	}
+}
+
+// Opacity sets the container's opacity (0.0 = invisible, 1.0 = fully visible).
+// Accepts float64, *float64, conditionNode, or tweenNode.
+func (f VBoxFn) Opacity(o any) VBoxFn {
+	return func(children ...any) VBoxC {
+		v := f(children...)
+		v.opacity.set(o)
 		return v
 	}
 }
@@ -371,6 +382,7 @@ type HBoxC struct {
 	localStyle       *Style
 	localStylePtr    *Style
 	localStyleCond   any
+	opacity          dynFloat64
 	children        []any
 }
 
@@ -409,6 +421,16 @@ func (f HBoxFn) Style(s any) HBoxFn {
 		case tweenNode:
 			h.localStyleCond = val
 		}
+		return h
+	}
+}
+
+// Opacity sets the container's opacity (0.0 = invisible, 1.0 = fully visible).
+// Accepts float64, *float64, conditionNode, or tweenNode.
+func (f HBoxFn) Opacity(o any) HBoxFn {
+	return func(children ...any) HBoxC {
+		h := f(children...)
+		h.opacity.set(o)
 		return h
 	}
 }

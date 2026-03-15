@@ -248,6 +248,8 @@ type OpDyn struct {
 	PercentWidth *float32
 	Gap          *int8
 	Fill         *Color
+	Opacity      *float64
+	OpacityArmed *bool // set true by render to signal From tween activation
 }
 
 // resolver methods — inlinable nil-check + deref, zero cost when Dyn is nil
@@ -476,6 +478,8 @@ func (t *Template) compileDynInt8(v any) *int8 {
 
 func (t *Template) compileDynColor(v any) *Color {
 	switch c := v.(type) {
+	case *Color:
+		return c
 	case conditionNode:
 		return t.compileCondColor(c)
 	case tweenNode:
@@ -729,6 +733,7 @@ func (t *Template) compileTweenFloat64(tw tweenNode, armed *bool) *float64 {
 
 			if !active {
 				wasActive = false
+				*storage = fromVal // reset so stale target doesn't flash on re-open
 				return
 			}
 
@@ -2265,6 +2270,20 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 	} else if v.localStyle != nil {
 		t.ops[idx].LocalStyle = v.localStyle
 	}
+	if v.opacity.dyn != nil {
+		v.opacity.compileArmed(t)
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Opacity = v.opacity.ptr
+		t.ops[idx].Dyn.OpacityArmed = v.opacity.armed
+	} else if v.opacity.val != 0 {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		val := v.opacity.val
+		t.ops[idx].Dyn.Opacity = &val
+	}
 	return idx
 }
 
@@ -2331,6 +2350,20 @@ func (t *Template) compileHBoxC(v HBoxC, parent int16, depth int, elemBase unsaf
 		t.ops[idx].LocalStyle = v.localStylePtr
 	} else if v.localStyle != nil {
 		t.ops[idx].LocalStyle = v.localStyle
+	}
+	if v.opacity.dyn != nil {
+		v.opacity.compileArmed(t)
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		t.ops[idx].Dyn.Opacity = v.opacity.ptr
+		t.ops[idx].Dyn.OpacityArmed = v.opacity.armed
+	} else if v.opacity.val != 0 {
+		if t.ops[idx].Dyn == nil {
+			t.ops[idx].Dyn = &OpDyn{}
+		}
+		val := v.opacity.val
+		t.ops[idx].Dyn.Opacity = &val
 	}
 	return idx
 }
@@ -5241,6 +5274,33 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 				continue
 			}
 			t.renderOp(buf, i, absX, absY, contentW)
+		}
+
+		// apply opacity: lerp all cells toward fill/BG
+		if op.Dyn != nil && op.Dyn.Opacity != nil {
+			if op.Dyn.OpacityArmed != nil {
+				*op.Dyn.OpacityArmed = true
+			}
+			opacity := *op.Dyn.Opacity
+			if opacity < 1.0 {
+				fade := 1.0 - opacity
+				bg := fillColor
+				if bg.Mode == ColorDefault {
+					bg = Color{Mode: ColorRGB} // fade toward black if no fill
+				}
+				for y := int(boxY); y < int(boxY+boxH); y++ {
+					for x := int(boxX); x < int(boxX+boxW); x++ {
+						c := buf.Get(x, y)
+						if c.Style.FG.Mode != ColorDefault {
+							c.Style.FG = LerpColor(c.Style.FG, bg, fade)
+						}
+						if c.Style.BG.Mode != ColorDefault {
+							c.Style.BG = LerpColor(c.Style.BG, bg, fade)
+						}
+						buf.Set(x, y, c)
+					}
+				}
+			}
 		}
 
 		// Restore inherited style, fill, and clip

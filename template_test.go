@@ -5275,3 +5275,79 @@ func TestAnimate(t *testing.T) {
 		t.Logf("If-branch SE animation: frame1=%d, mid=%d, final=%d", fg1.R, fg2.R, fg3.R)
 	})
 }
+
+func TestOpacity(t *testing.T) {
+	t.Run("static opacity", func(t *testing.T) {
+		tmpl := Build(
+			VBox.Fill(RGB(0, 0, 0)).Opacity(0.5)(
+				Text("Hi").FG(RGB(200, 200, 200)),
+			),
+		)
+		buf := NewBuffer(10, 1)
+		tmpl.Execute(buf, 10, 1)
+		c := buf.Get(0, 0)
+		// FG (200,200,200) lerped 50% toward BG (0,0,0) → ~(100,100,100)
+		if c.Style.FG.R > 120 || c.Style.FG.R < 80 {
+			t.Fatalf("expected FG.R ~100 at opacity 0.5, got %d", c.Style.FG.R)
+		}
+		t.Logf("opacity 0.5: FG.R=%d", c.Style.FG.R)
+	})
+
+	t.Run("opacity with pointer", func(t *testing.T) {
+		opacity := 1.0
+		tmpl := Build(
+			VBox.Fill(RGB(0, 0, 0)).Opacity(&opacity)(
+				Text("Hi").FG(RGB(200, 200, 200)),
+			),
+		)
+		buf := NewBuffer(10, 1)
+		tmpl.Execute(buf, 10, 1)
+		fg1 := buf.Get(0, 0).Style.FG
+		if fg1.R < 180 {
+			t.Fatalf("opacity 1.0: expected near-original FG, got R=%d", fg1.R)
+		}
+
+		opacity = 0.0
+		tmpl.Execute(buf, 10, 1)
+		fg2 := buf.Get(0, 0).Style.FG
+		// fully faded toward black
+		if fg2.R > 20 {
+			t.Fatalf("opacity 0.0: expected near-black FG, got R=%d", fg2.R)
+		}
+		t.Logf("pointer opacity: full=%d, zero=%d", fg1.R, fg2.R)
+	})
+
+	t.Run("opacity with animation", func(t *testing.T) {
+		tmpl := Build(
+			VBox.Fill(RGB(0, 0, 0)).Opacity(
+				Animate.Duration(200 * time.Millisecond).From(0.0)(1.0),
+			)(
+				Text("Hi").FG(RGB(200, 200, 200)),
+			),
+		)
+		buf := NewBuffer(10, 1)
+
+		// frame 1: opacity ~0 → nearly invisible
+		tmpl.Execute(buf, 10, 1)
+		fg1 := buf.Get(0, 0).Style.FG
+
+		time.Sleep(100 * time.Millisecond)
+		tmpl.Execute(buf, 10, 1)
+		fg2 := buf.Get(0, 0).Style.FG
+
+		time.Sleep(200 * time.Millisecond)
+		tmpl.Execute(buf, 10, 1)
+		fg3 := buf.Get(0, 0).Style.FG
+
+		if fg1.R > 40 {
+			t.Fatalf("start: expected near-invisible, got R=%d", fg1.R)
+		}
+		if fg2.R <= fg1.R {
+			t.Fatalf("mid: expected brighter than start, got R=%d vs %d", fg2.R, fg1.R)
+		}
+		if fg3.R < 180 {
+			t.Fatalf("end: expected near-full opacity, got R=%d", fg3.R)
+		}
+		t.Logf("animated opacity: start=%d, mid=%d, end=%d", fg1.R, fg2.R, fg3.R)
+	})
+}
