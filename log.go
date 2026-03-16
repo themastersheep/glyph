@@ -18,6 +18,9 @@ type LogC struct {
 	flexGrowPtr  *float32
 	flexGrowCond conditionNode
 
+	// styling
+	style Style
+
 	// key bindings
 	declaredBindings []binding
 
@@ -56,6 +59,20 @@ func (lv *LogC) MaxLines(n int) *LogC {
 // return to the bottom.
 func (lv *LogC) AutoScroll(enabled bool) *LogC {
 	lv.autoScroll = enabled
+	return lv
+}
+
+func (lv *LogC) FG(c any) *LogC {
+	if col, ok := c.(Color); ok {
+		lv.style.FG = col
+	}
+	return lv
+}
+
+func (lv *LogC) BG(c any) *LogC {
+	if col, ok := c.(Color); ok {
+		lv.style.BG = col
+	}
 	return lv
 }
 
@@ -240,7 +257,7 @@ func (lv *LogC) syncToLayer() {
 	const bufferWidth = 500
 	buf := NewBuffer(bufferWidth, len(lv.lines))
 	for i, line := range lv.lines {
-		buf.WriteStringFast(0, i, line, Style{}, bufferWidth)
+		buf.WriteStringFast(0, i, line, lv.style, bufferWidth)
 	}
 	lv.layer.SetBuffer(buf)
 }

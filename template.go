@@ -5158,6 +5158,19 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 			ext.ptr.prepare()
 			ext.ptr.blit(buf, int(absX), int(absY), layerW, int(contentH))
 
+			// apply inheritedFill to layer cells with default BG
+			if t.inheritedFill.Mode != ColorDefault {
+				for cy := int(absY); cy < int(absY)+int(contentH) && cy < buf.height; cy++ {
+					for cx := int(absX); cx < int(absX)+layerW && cx < buf.width; cx++ {
+						cell := buf.Get(cx, cy)
+						if cell.Style.BG.Mode == ColorDefault {
+							cell.Style.BG = t.inheritedFill
+							buf.Set(cx, cy, cell)
+						}
+					}
+				}
+			}
+
 			if ext.ptr.cursor.Visible && t.app != nil {
 				t.app.activeLayer = ext.ptr
 			}
