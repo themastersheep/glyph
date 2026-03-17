@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kungfusheep/riffkey"
@@ -54,9 +55,10 @@ type App struct {
 	viewStack     []string // pushed views (for modal overlays)
 
 	// State
-	running    bool
-	renderMu   sync.Mutex
-	renderChan chan struct{}
+	running      bool
+	renderMu     sync.Mutex
+	renderChan   chan struct{}
+	frameFlushed atomic.Bool // set when input renders directly, cleared by debounce timer
 
 	// Cursor state
 	cursorX, cursorY int
@@ -185,13 +187,30 @@ func (a *App) RunNonInteractive() error {
 	// Initial render
 	a.render()
 
-	// Wait for Stop() to be called
+	// frame debounce: render at most once per 16ms (~60fps)
+	frameTimer := time.NewTimer(0)
+	if !frameTimer.Stop() {
+		<-frameTimer.C
+	}
+	framePending := false
+
 	for a.running {
 		select {
 		case <-a.renderChan:
+			if !framePending {
+				framePending = true
+				frameTimer.Reset(16 * time.Millisecond)
+			}
+		case <-frameTimer.C:
+			framePending = false
+			// drain any render request that arrived during the frame window
+			select {
+			case <-a.renderChan:
+			default:
+			}
 			a.render()
 		case <-time.After(50 * time.Millisecond):
-			// Check running flag periodically
+			// check running flag periodically
 		}
 	}
 
@@ -902,13 +921,18 @@ func (a *App) run(startView string) error {
 	a.RequestRender()
 
 	// Run riffkey input loop
-	// afterDispatch is called after every key - perfect for rendering
+	// render immediately on input for zero-latency response;
+	// signal debounce timer to skip its next frame since we just rendered
 	err := a.input.Run(a.reader, func(handled bool) {
-		if !a.running {
-			return
+		if a.running {
+			a.frameFlushed.Store(true)
+			// drain any pending render request so the debounce timer won't double-render
+			select {
+			case <-a.renderChan:
+			default:
+			}
+			a.render()
 		}
-		// Always render after input (state may have changed)
-		a.render()
 	})
 
 	// Normal termination via Stop() causes reader to return error
@@ -922,13 +946,38 @@ func (a *App) run(startView string) error {
 	return err
 }
 
-// handleRenderRequests processes async render requests.
+// handleRenderRequests processes async render requests with frame debouncing.
+// Renders at most once per 16ms (~60fps), coalescing multiple requests.
 func (a *App) handleRenderRequests() {
+	frameTimer := time.NewTimer(0)
+	if !frameTimer.Stop() {
+		<-frameTimer.C
+	}
+	framePending := false
+
 	for {
 		select {
 		case <-a.renderChan:
 			if !a.running {
 				return
+			}
+			if !framePending {
+				framePending = true
+				frameTimer.Reset(8 * time.Millisecond)
+			}
+		case <-frameTimer.C:
+			framePending = false
+			if !a.running {
+				return
+			}
+			// skip if input already rendered this frame
+			if a.frameFlushed.CompareAndSwap(true, false) {
+				continue
+			}
+			// drain any render request that arrived during the frame window
+			select {
+			case <-a.renderChan:
+			default:
 			}
 			a.render()
 		}

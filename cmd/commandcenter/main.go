@@ -7,25 +7,76 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 
 	. "github.com/kungfusheep/glyph"
 	"github.com/kungfusheep/riffkey"
 )
 
-// Rose Piné palette
-var (
-	rpBase    = Hex(0x191724)
-	rpSurface = Hex(0x1f1d2e)
-	rpOverlay = Hex(0x26233a)
-	rpText    = Hex(0xe0def4)
-	rpSubtle  = Hex(0x908caa)
-	rpMuted   = Hex(0x6e6a86)
-	rpLove    = Hex(0xeb6f92)
-	rpGold    = Hex(0xf6c177)
-	rpFoam    = Hex(0x9ccfd8)
-	rpIris    = Hex(0xc4a7e7)
-)
+type palette struct {
+	base    Color
+	surface Color
+	overlay Color
+	text    Color
+	subtle  Color
+	muted   Color
+	love    Color // error/warn accent
+	gold    Color // warning/highlight
+	foam    Color // success/healthy
+	iris    Color // info/accent
+}
+
+var themes = []struct {
+	name string
+	pal  palette
+}{
+	{"rose piné", palette{
+		base: Hex(0x191724), surface: Hex(0x1f1d2e), overlay: Hex(0x26233a),
+		text: Hex(0xe0def4), subtle: Hex(0x908caa), muted: Hex(0x6e6a86),
+		love: Hex(0xeb6f92), gold: Hex(0xf6c177), foam: Hex(0x9ccfd8), iris: Hex(0xc4a7e7),
+	}},
+	{"catppuccin mocha", palette{
+		base: Hex(0x1e1e2e), surface: Hex(0x313244), overlay: Hex(0x45475a),
+		text: Hex(0xcdd6f4), subtle: Hex(0xa6adc8), muted: Hex(0x6c7086),
+		love: Hex(0xf38ba8), gold: Hex(0xf9e2af), foam: Hex(0xa6e3a1), iris: Hex(0xcba6f7),
+	}},
+	{"mfd", palette{
+		base: Hex(0x7A8B69), surface: Hex(0x5A6B4A), overlay: Hex(0x5A6B4A),
+		text: Hex(0x1E2D1E), subtle: Hex(0x3A4A3A), muted: Hex(0x354828),
+		love: Hex(0x0D1D0D), gold: Hex(0x0D1D0D), foam: Hex(0x1E2D1E), iris: Hex(0x1E2D1E),
+	}},
+	{"gruvbox", palette{
+		base: Hex(0x282828), surface: Hex(0x3c3836), overlay: Hex(0x504945),
+		text: Hex(0xebdbb2), subtle: Hex(0xa89984), muted: Hex(0x665c54),
+		love: Hex(0xfb4934), gold: Hex(0xfabd2f), foam: Hex(0xb8bb26), iris: Hex(0xd3869b),
+	}},
+	{"nord", palette{
+		base: Hex(0x2e3440), surface: Hex(0x3b4252), overlay: Hex(0x434c5e),
+		text: Hex(0xeceff4), subtle: Hex(0xd8dee9), muted: Hex(0x4c566a),
+		love: Hex(0xbf616a), gold: Hex(0xebcb8b), foam: Hex(0xa3be8c), iris: Hex(0xb48ead),
+	}},
+	{"dracula", palette{
+		base: Hex(0x282a36), surface: Hex(0x44475a), overlay: Hex(0x6272a4),
+		text: Hex(0xf8f8f2), subtle: Hex(0xbfbfbf), muted: Hex(0x6272a4),
+		love: Hex(0xff5555), gold: Hex(0xf1fa8c), foam: Hex(0x50fa7b), iris: Hex(0xbd93f9),
+	}},
+	{"mfd-dark", palette{
+		base: Hex(0x1E2D1E), surface: Hex(0x253525), overlay: Hex(0x3A4A3A),
+		text: Hex(0x8A9B70), subtle: Hex(0x6A7B5A), muted: Hex(0x607258),
+		love: Hex(0xA0B180), gold: Hex(0xA0B180), foam: Hex(0xA0B180), iris: Hex(0x8A9B70),
+	}},
+	{"mfd-mono", palette{
+		base: Hex(0x08080C), surface: Hex(0x0C0C10), overlay: Hex(0x2A2A32),
+		text: Hex(0xD0D0D8), subtle: Hex(0x909098), muted: Hex(0x606068),
+		love: Hex(0xF0F0FF), gold: Hex(0xF0F0FF), foam: Hex(0xD0D0D8), iris: Hex(0xD0D0D8),
+	}},
+	{"mfd-amber", palette{
+		base: Hex(0x0F0C08), surface: Hex(0x141008), overlay: Hex(0x3A2810),
+		text: Hex(0xCC9944), subtle: Hex(0x9A7730), muted: Hex(0x7A5830),
+		love: Hex(0xFFBB55), gold: Hex(0xFFBB55), foam: Hex(0xCC9944), iris: Hex(0xCC9944),
+	}},
+}
 
 type service struct {
 	Name       string
@@ -38,6 +89,7 @@ type service struct {
 
 type dashboard struct {
 	rng *rand.Rand
+	pal palette
 
 	// sparkline data
 	reqData, latData, errData []float64
@@ -52,17 +104,23 @@ type dashboard struct {
 	logW        *io.PipeWriter
 
 	// ui flags
+	colorAnimDur  time.Duration
 	showModal     bool
 	sparkExpanded bool
 	logExpanded   bool
 	restarting    bool
 	restartPct    int
 	degraded      bool
-	pulseStyle    Style
+	themeIdx      int
 
 	// set after init
 	app     *App
 	svcList *FilterListC[service]
+	logView *LogC
+
+	// cascade styles (pointers so they update reactively with theme)
+	textCascade   Style
+	subtleCascade Style
 
 	// recovery lerp
 	wasDegraded  bool
@@ -77,6 +135,7 @@ func newDashboard() *dashboard {
 
 	s := &dashboard{
 		rng:     rng,
+		pal:     themes[0].pal,
 		logR:    pr,
 		logW:    pw,
 		reqData: make([]float64, 40),
@@ -94,8 +153,9 @@ func newDashboard() *dashboard {
 			{Name: "cdn-edge", Status: "live", CPU: 1.1, CPUStr: "  1.1%", Mem: " 42 MB"},
 			{Name: "auth-service", Status: "live", CPU: 5.4, CPUStr: "  5.4%", Mem: "128 MB"},
 		},
-		degraded:    true,
-		wasDegraded: true,
+		colorAnimDur: 5 * time.Second,
+		degraded:     true,
+		wasDegraded:  true,
 	}
 
 	// pre-seed sparkline history: healthy on left, degrading toward right
@@ -118,6 +178,7 @@ func newDashboard() *dashboard {
 	}
 
 	s.selectedSvc = s.services[0]
+	s.applyTheme()
 
 	// seed initial log lines (written async, consumed when Log component starts)
 	go func() {
@@ -127,6 +188,11 @@ func newDashboard() *dashboard {
 	}()
 
 	return s
+}
+
+func (s *dashboard) applyTheme() {
+	s.textCascade = Style{FG: s.pal.text}
+	s.subtleCascade = Style{FG: s.pal.subtle}
 }
 
 func lerp(a, b, t float64) float64 { return a + (b-a)*t }
@@ -140,16 +206,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	colorAnim := Animate.Duration(5 * time.Second).Ease(EaseOutCubic)
+	colorAnim := Animate.Duration(&s.colorAnimDur).Ease(EaseOutCubic)
 
 	metricPanel := func(title string, data *[]float64, label *string, col any) any {
-		return VBox.Grow(1).Border(BorderRounded).BorderFG(rpOverlay).Title(title)(
+		return VBox.Grow(1).Border(BorderRounded).BorderFG(&s.pal.overlay).Title(title)(
 			Sparkline(data).FG(col).Height(
 				Animate.Duration(200*time.Millisecond).Ease(EaseOutCubic)(
 					If(&s.sparkExpanded).Then(18).Else(1),
 				),
 			),
-			Text(label).FG(rpMuted),
+			Text(label).FG(&s.pal.muted),
 		)
 	}
 
@@ -158,16 +224,16 @@ func main() {
 		Render(func(svc *service) any {
 			return HBox.Gap(2)(
 				VBox.Width(1)(Switch(&svc.Status).
-					Case("warn", Text("○").FG(rpGold)).
-					Default(Text("●").FG(rpFoam))),
-				Text(&svc.Name).FG(rpText),
+					Case("warn", Text("○").FG(&s.pal.gold)).
+					Default(Text("●").FG(&s.pal.foam))),
+				Text(&svc.Name).FG(&s.pal.text),
 				Space(),
-				Text(&svc.CPUStr).FG(rpSubtle).Width(6).Align(AlignRight),
-				Text(&svc.Mem).FG(rpSubtle).Width(8).Align(AlignRight),
+				Text(&svc.CPUStr).FG(&s.pal.subtle).Width(6).Align(AlignRight),
+				Text(&svc.Mem).FG(&s.pal.subtle).Width(8).Align(AlignRight),
 				VBox.Width(11)(
 					Switch(&svc.Status).
-						Case("warn", Text("degraded").FG(rpGold)).
-						Default(Text("healthy").FG(rpMuted)),
+						Case("warn", Text("degraded").FG(&s.pal.gold)).
+						Default(Text("healthy").FG(&s.pal.muted)),
 				),
 			)
 		}).
@@ -185,46 +251,93 @@ func main() {
 	logView := Log(s.logR).
 		MaxLines(100).
 		Grow(1).
-		FG(rpMuted).
-		BG(rpBase).
-		OnUpdate(app.RequestRender)
+		Colorize(func(line string) []Span {
+			logStyle := Style{FG: s.pal.muted, BG: s.pal.base}
+			pos := 0
+			for _, f := range strings.Fields(line) {
+				idx := strings.Index(line[pos:], f)
+				if idx < 0 {
+					break
+				}
+				start := pos + idx
+				if len(f) == 3 && f[0] >= '1' && f[0] <= '5' {
+					st := logStyle
+					if f[0] == '5' {
+						st.FG = s.pal.love
+					} else if f[0] == '2' || f[0] == '3' {
+						st.FG = s.pal.foam
+					}
+					return []Span{
+						{Text: line[:start], Style: logStyle},
+						{Text: f, Style: st},
+						{Text: line[start+3:], Style: logStyle},
+					}
+				}
+				pos = start + len(f)
+			}
+			return []Span{{Text: line, Style: logStyle}}
+		})
+	s.logView = logView
+
+	closeModal := func() {
+		s.showModal = false
+		s.restarting = false
+		s.restartPct = 0
+		app.Pop()
+		app.RequestRender()
+	}
+
+	restartComplete := func() {
+		s.selectedSvc.Status = "live"
+		if s.selectedPtr != nil {
+			s.selectedPtr.Status = "live"
+			s.selectedPtr.CPU = 4.0 + s.rng.Float64()*2
+		}
+		closeModal()
+		// shorten color anim after recovery transition plays out
+		go func() {
+			time.Sleep(s.colorAnimDur)
+			s.colorAnimDur = 10 * time.Millisecond
+		}()
+	}
 
 	anim := Animate.Duration(900 * time.Millisecond).Ease(EaseOutCubic).From(0.0)
 
 	var popupRef NodeRef
 	app.SetView(
-		VBox.Grow(1).Fill(rpBase).CascadeStyle(&Style{FG: rpText})(
+		VBox.Grow(1).Fill(&s.pal.base).CascadeStyle(&s.textCascade)(
 			VBox.Grow(1).MarginVH(1, 2)(
-				HBox.CascadeStyle(&Style{FG: rpSubtle})(
-					Text("● glyph control").FG(rpIris),
+				HBox.CascadeStyle(&s.subtleCascade)(
+					Text("● glyph control").FG(&s.pal.iris),
 					Space(),
 					Text("prod-us-east-1  "),
 					Text(&s.clock),
 				),
-				HRule().Char(BorderDouble.Horizontal).FG(rpOverlay),
+				HRule().Char(BorderDouble.Horizontal).FG(&s.pal.overlay),
 
 				HBox.Gap(1)(
 					metricPanel("requests/s", &s.reqData, &s.reqRate,
-						colorAnim(If(&s.degraded).Then(rpGold).Else(rpFoam))),
+						colorAnim(If(&s.degraded).Then(&s.pal.gold).Else(&s.pal.foam))),
 					metricPanel("p99 latency", &s.latData, &s.p99Lat,
-						colorAnim(If(&s.degraded).Then(rpLove).Else(rpIris))),
+						colorAnim(If(&s.degraded).Then(&s.pal.love).Else(&s.pal.iris))),
 					metricPanel("error rate", &s.errData, &s.errRate,
-						colorAnim(If(&s.degraded).Then(rpLove).Else(rpGold))),
+						colorAnim(If(&s.degraded).Then(&s.pal.love).Else(&s.pal.gold))),
 				),
 
 				VBox.Grow(1)(
-					VBox.Grow(1).Border(BorderRounded).BorderFG(rpOverlay).Title("services")(
+					VBox.Grow(1).Border(BorderRounded).BorderFG(&s.pal.overlay).Title("services")(
 						HBox.Gap(2)(
-							Text("●  SERVICE").FG(rpMuted),
+							VBox.Width(1)(Text("●").FG(&s.pal.muted)),
+							Text("SERVICE").FG(&s.pal.muted),
 							Space(),
-							Text("CPU").FG(rpMuted).Width(5).Align(AlignRight),
-							Text("MEM").FG(rpMuted).Width(7).Align(AlignRight),
-							Text("STATUS").FG(rpMuted).Width(13),
+							Text("CPU").FG(&s.pal.muted).Width(6).Align(AlignRight),
+							Text("MEM").FG(&s.pal.muted).Width(8),
+							VBox.Width(11)(Text("STATUS").FG(&s.pal.muted)),
 						),
-						HRule().FG(rpOverlay).Extend(),
+						HRule().FG(&s.pal.overlay).Extend(),
 						svcList,
 					),
-					VBox.Border(BorderRounded).BorderFG(rpOverlay).Title("log").Height(
+					VBox.Border(BorderRounded).BorderFG(&s.pal.overlay).Title("log").Height(
 						Animate.Duration(200*time.Millisecond).Ease(EaseOutCubic)(
 							If(&s.logExpanded).Then(16).Else(5),
 						),
@@ -233,48 +346,50 @@ func main() {
 					),
 				),
 
-				HRule().Char(BorderDouble.Horizontal).FG(rpOverlay),
-				Text("[enter] inspect  [ctrl+s] sparklines  [ctrl+l] log  [ctrl+c] quit").FG(rpMuted),
+				HRule().Char(BorderDouble.Horizontal).FG(&s.pal.overlay),
+				Text("[enter] inspect  [ctrl+s] sparklines  [ctrl+l] log  [ctrl+c] quit").FG(&s.pal.muted),
 
 				If(&s.showModal).Then(OverlayNode{
 					Centered: true,
-					Child: VBox.Width(46).Fill(rpSurface).NodeRef(&popupRef)(
+					Child: VBox.Width(46).Fill(&s.pal.surface).NodeRef(&popupRef)(
 						SpaceH(1),
 						HBox(
 							If(&s.selectedSvc.Status).Eq("warn").
-								Then(Text("  ○ ").FG(rpGold)).
-								Else(Text("  ● ").FG(rpFoam)),
+								Then(Text("  ○ ").FG(&s.pal.gold)).
+								Else(Text("  ● ").FG(&s.pal.foam)),
 							If(&s.selectedSvc.Status).Eq("warn").
-								Then(Text(&s.selectedSvc.Name).FG(rpGold).Bold()).
-								Else(Text(&s.selectedSvc.Name).FG(rpFoam).Bold()),
+								Then(Text(&s.selectedSvc.Name).FG(&s.pal.gold).Bold()).
+								Else(Text(&s.selectedSvc.Name).FG(&s.pal.foam).Bold()),
 						),
-						HRule().FG(rpOverlay),
-						Text("  cpu history").FG(rpMuted),
-						Sparkline(&s.selectedSvc.CPUHistory).FG(rpIris),
+						HRule().FG(&s.pal.overlay),
+						Text("  cpu history").FG(&s.pal.muted),
+						Sparkline(&s.selectedSvc.CPUHistory).FG(&s.pal.iris),
 						HBox.Gap(3)(
 							VBox(
-								Text("  cpu").FG(rpMuted),
-								Text("  mem").FG(rpMuted),
+								Text("  cpu").FG(&s.pal.muted),
+								Text("  mem").FG(&s.pal.muted),
 							),
 							VBox(
 								IfOrd(&s.selectedSvc.CPU).Gt(20.0).
-									Then(Text(&s.selectedSvc.CPUStr).FG(rpGold)).
-									Else(Text(&s.selectedSvc.CPUStr).FG(rpText)),
-								Text(&s.selectedSvc.Mem).FG(rpText),
+									Then(Text(&s.selectedSvc.CPUStr).FG(&s.pal.gold)).
+									Else(Text(&s.selectedSvc.CPUStr).FG(&s.pal.text)),
+								Text(&s.selectedSvc.Mem).FG(&s.pal.text),
 							),
 						),
-						HRule().FG(rpOverlay),
+						HRule().FG(&s.pal.overlay),
 						If(&s.restarting).
 							Then(
 								HBox.Gap(1)(
-									Text("  restarting").FG(rpMuted),
-									HBox.Grow(1).CascadeStyle(&s.pulseStyle)(
-										Progress(&s.restartPct),
+									Text("  restarting").FG(&s.pal.muted),
+									HBox.Grow(1)(
+										Progress(
+											Animate.Duration(2*time.Second).Ease(EaseOutCubic).OnComplete(restartComplete)(&s.restartPct),
+										).FG(&s.pal.foam),
 									),
 								),
 							).
 							Else(
-								Text("  [r] restart service  [esc] close").FG(rpMuted),
+								Text("  [r] restart service  [esc] close").FG(&s.pal.muted),
 							),
 						SpaceH(1),
 						ScreenEffect(
@@ -288,7 +403,7 @@ func main() {
 	)
 
 	app.Handle("<C-c>", func() { app.Stop() })
-	app.Handle("<Escape>", func() {})
+	app.Handle("<Escape>", func() { s.svcList.Clear() })
 	app.Handle("<C-s>", func() {
 		s.sparkExpanded = !s.sparkExpanded
 		if s.logExpanded {
@@ -301,13 +416,12 @@ func main() {
 			s.sparkExpanded = false
 		}
 	})
-
-	closeModal := func() {
-		s.showModal = false
-		s.restarting = false
-		app.Pop()
-		app.RequestRender()
-	}
+	app.Handle("<C-t>", func() {
+		s.themeIdx = (s.themeIdx + 1) % len(themes)
+		s.pal = themes[s.themeIdx].pal
+		s.applyTheme()
+		s.logView.Refresh()
+	})
 
 	modalRouter = riffkey.NewRouter()
 	modalRouter.Handle("<Escape>", func(_ riffkey.Match) { closeModal() })
@@ -317,23 +431,7 @@ func main() {
 			return
 		}
 		s.restarting = true
-		s.restartPct = 0
-		go func() {
-			for i := 1; i <= 50; i++ {
-				time.Sleep(40 * time.Millisecond)
-				s.restartPct = i * 2
-				t := float64(s.restartPct) / 100.0
-				b := math.Pow(t, 1.5)
-				s.pulseStyle.FG = RGB(uint8(30+b*80), uint8(120+b*100), uint8(110+b*90))
-				app.RequestRender()
-			}
-			s.selectedSvc.Status = "live"
-			if s.selectedPtr != nil {
-				s.selectedPtr.Status = "live"
-				s.selectedPtr.CPU = 4.0 + s.rng.Float64()*2
-			}
-			closeModal()
-		}()
+		s.restartPct = 100
 	})
 
 	go func() {

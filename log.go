@@ -19,7 +19,8 @@ type LogC struct {
 	flexGrowCond conditionNode
 
 	// styling
-	style Style
+	style    Style
+	colorize func(string) []Span
 
 	// key bindings
 	declaredBindings []binding
@@ -73,6 +74,13 @@ func (lv *LogC) BG(c any) *LogC {
 	if col, ok := c.(Color); ok {
 		lv.style.BG = col
 	}
+	return lv
+}
+
+// Colorize sets a function that transforms each line into styled spans.
+// When set, lines are rendered with WriteSpans instead of WriteStringFast.
+func (lv *LogC) Colorize(fn func(string) []Span) *LogC {
+	lv.colorize = fn
 	return lv
 }
 
@@ -247,6 +255,17 @@ func (lv *LogC) readLoop() {
 	}
 }
 
+// Refresh re-renders all buffered lines to the layer.
+// Call this when external state used by the Colorize callback changes (e.g. theme switch).
+func (lv *LogC) Refresh() {
+	lv.mu.Lock()
+	defer lv.mu.Unlock()
+	lv.syncToLayer()
+	if lv.following {
+		lv.layer.ScrollToEnd()
+	}
+}
+
 // syncToLayer writes all buffered lines to the layer's buffer.
 func (lv *LogC) syncToLayer() {
 	if len(lv.lines) == 0 {
@@ -256,8 +275,15 @@ func (lv *LogC) syncToLayer() {
 	// create exact-sized buffer (EnsureSize only grows, which breaks maxScroll after ring buffer truncates)
 	const bufferWidth = 500
 	buf := NewBuffer(bufferWidth, len(lv.lines))
-	for i, line := range lv.lines {
-		buf.WriteStringFast(0, i, line, lv.style, bufferWidth)
+	if lv.colorize != nil {
+		for i, line := range lv.lines {
+			buf.ClearLineWithStyle(i, lv.style)
+			buf.WriteSpans(0, i, lv.colorize(line), bufferWidth)
+		}
+	} else {
+		for i, line := range lv.lines {
+			buf.WriteStringFast(0, i, line, lv.style, bufferWidth)
+		}
 	}
 	lv.layer.SetBuffer(buf)
 }

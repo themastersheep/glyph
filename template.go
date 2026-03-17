@@ -601,7 +601,9 @@ func (t *Template) compileTweenInt16(tw tweenNode) *int16 {
 	watchPtr := t.resolveTweenTargetInt16(tw.getTarget())
 	storage := new(int16)
 	*storage = *watchPtr
-	dur := tw.getTweenDuration()
+	durVal := tw.getTweenDuration()
+	durPtr := tw.(*tween).durationPtr
+	onComplete := tw.getTweenOnComplete()
 	ease := tw.getTweenEasing()
 
 	lastTarget := *watchPtr
@@ -616,6 +618,10 @@ func (t *Template) compileTweenInt16(tw tweenNode) *int16 {
 	}
 
 	root.evals = append(root.evals, func() {
+		dur := durVal
+		if durPtr != nil {
+			dur = *durPtr
+		}
 		target := *watchPtr
 		now := root.frameTime
 		if needsFirstFrame {
@@ -635,6 +641,9 @@ func (t *Template) compileTweenInt16(tw tweenNode) *int16 {
 		if elapsed >= dur {
 			*storage = target
 			startTime = time.Time{}
+			if onComplete != nil {
+				onComplete()
+			}
 			return
 		}
 		progress := float64(elapsed) / float64(dur)
@@ -652,7 +661,9 @@ func (t *Template) compileTweenFloat32(tw tweenNode) *float32 {
 	watchPtr := t.resolveTweenTargetFloat32(tw.getTarget())
 	storage := new(float32)
 	*storage = *watchPtr
-	dur := tw.getTweenDuration()
+	durVal := tw.getTweenDuration()
+	durPtr := tw.(*tween).durationPtr
+	onComplete := tw.getTweenOnComplete()
 	ease := tw.getTweenEasing()
 
 	lastTarget := *watchPtr
@@ -667,6 +678,10 @@ func (t *Template) compileTweenFloat32(tw tweenNode) *float32 {
 	}
 
 	root.evals = append(root.evals, func() {
+		dur := durVal
+		if durPtr != nil {
+			dur = *durPtr
+		}
 		target := *watchPtr
 		now := root.frameTime
 		if needsFirstFrame {
@@ -686,6 +701,9 @@ func (t *Template) compileTweenFloat32(tw tweenNode) *float32 {
 		if elapsed >= dur {
 			*storage = target
 			startTime = time.Time{}
+			if onComplete != nil {
+				onComplete()
+			}
 			return
 		}
 		progress := float64(elapsed) / float64(dur)
@@ -703,7 +721,9 @@ func (t *Template) compileTweenFloat64(tw tweenNode, armed *bool) *float64 {
 	watchPtr := t.resolveTweenTargetFloat64(tw.getTarget())
 	storage := new(float64)
 	*storage = *watchPtr
-	dur := tw.getTweenDuration()
+	durVal := tw.getTweenDuration()
+	durPtr := tw.(*tween).durationPtr
+	onComplete := tw.getTweenOnComplete()
 	ease := tw.getTweenEasing()
 
 	lastTarget := *watchPtr
@@ -723,6 +743,10 @@ func (t *Template) compileTweenFloat64(tw tweenNode, armed *bool) *float64 {
 	wasActive := armed == nil // nil armed = always active (non-effect tweens)
 
 	root.evals = append(root.evals, func() {
+		dur := durVal
+		if durPtr != nil {
+			dur = *durPtr
+		}
 		target := *watchPtr
 		now := root.frameTime
 
@@ -768,6 +792,9 @@ func (t *Template) compileTweenFloat64(tw tweenNode, armed *bool) *float64 {
 		if elapsed >= dur {
 			*storage = target
 			startTime = time.Time{}
+			if onComplete != nil {
+				onComplete()
+			}
 			return
 		}
 		progress := float64(elapsed) / float64(dur)
@@ -785,7 +812,9 @@ func (t *Template) compileTweenInt8(tw tweenNode) *int8 {
 	watchPtr := t.resolveTweenTargetInt8(tw.getTarget())
 	storage := new(int8)
 	*storage = *watchPtr
-	dur := tw.getTweenDuration()
+	durVal := tw.getTweenDuration()
+	durPtr := tw.(*tween).durationPtr
+	onComplete := tw.getTweenOnComplete()
 	ease := tw.getTweenEasing()
 
 	lastTarget := *watchPtr
@@ -800,6 +829,10 @@ func (t *Template) compileTweenInt8(tw tweenNode) *int8 {
 	}
 
 	root.evals = append(root.evals, func() {
+		dur := durVal
+		if durPtr != nil {
+			dur = *durPtr
+		}
 		target := *watchPtr
 		now := root.frameTime
 		if needsFirstFrame {
@@ -819,6 +852,9 @@ func (t *Template) compileTweenInt8(tw tweenNode) *int8 {
 		if elapsed >= dur {
 			*storage = target
 			startTime = time.Time{}
+			if onComplete != nil {
+				onComplete()
+			}
 			return
 		}
 		progress := float64(elapsed) / float64(dur)
@@ -836,6 +872,15 @@ func (t *Template) resolveTweenTargetInt16(target any) *int16 {
 	switch v := target.(type) {
 	case *int16:
 		return v
+	case *int:
+		// bridge *int to *int16 via an eval that syncs each frame
+		storage := new(int16)
+		*storage = int16(*v)
+		root := t.evalRoot()
+		root.evals = append(root.evals, func() {
+			*storage = int16(*v)
+		})
+		return storage
 	case conditionNode:
 		return t.compileCondInt16(v)
 	}
@@ -886,7 +931,9 @@ func (t *Template) compileTweenColor(tw tweenNode) *Color {
 	watchPtr := t.resolveTweenTargetColor(tw.getTarget())
 	storage := new(Color)
 	*storage = *watchPtr
-	dur := tw.getTweenDuration()
+	durVal := tw.getTweenDuration()
+	durPtr := tw.(*tween).durationPtr
+	onComplete := tw.getTweenOnComplete()
 	ease := tw.getTweenEasing()
 
 	lastTarget := *watchPtr
@@ -903,6 +950,10 @@ func (t *Template) compileTweenColor(tw tweenNode) *Color {
 	}
 
 	root.evals = append(root.evals, func() {
+		dur := durVal
+		if durPtr != nil {
+			dur = *durPtr
+		}
 		target := *watchPtr
 		now := root.frameTime
 		if needsFirstFrame {
@@ -922,6 +973,9 @@ func (t *Template) compileTweenColor(tw tweenNode) *Color {
 		if elapsed >= dur {
 			*storage = target
 			startTime = time.Time{}
+			if onComplete != nil {
+				onComplete()
+			}
 			return
 		}
 		progress := float64(elapsed) / float64(dur)
@@ -939,7 +993,9 @@ func (t *Template) compileTweenStyle(tw tweenNode) *Style {
 	watchPtr := t.resolveTweenTargetStyle(tw.getTarget())
 	storage := new(Style)
 	*storage = *watchPtr
-	dur := tw.getTweenDuration()
+	durVal := tw.getTweenDuration()
+	durPtr := tw.(*tween).durationPtr
+	onComplete := tw.getTweenOnComplete()
 	ease := tw.getTweenEasing()
 
 	lastTarget := *watchPtr
@@ -956,6 +1012,10 @@ func (t *Template) compileTweenStyle(tw tweenNode) *Style {
 	}
 
 	root.evals = append(root.evals, func() {
+		dur := durVal
+		if durPtr != nil {
+			dur = *durPtr
+		}
 		target := *watchPtr
 		now := root.frameTime
 		if needsFirstFrame {
@@ -975,6 +1035,9 @@ func (t *Template) compileTweenStyle(tw tweenNode) *Style {
 		if elapsed >= dur {
 			*storage = target
 			startTime = time.Time{}
+			if onComplete != nil {
+				onComplete()
+			}
 			return
 		}
 		progress := float64(elapsed) / float64(dur)
@@ -1104,6 +1167,7 @@ type opText struct {
 	ptr      *string
 	off      uintptr
 	fn       func() string
+	fnCached string // cached result from fn(), set during width measurement
 	style    Style
 	stylePtr *Style // dynamic style override (nil = use static)
 }
@@ -1114,6 +1178,8 @@ func (tx *opText) resolve(elemBase unsafe.Pointer) string {
 		return *tx.ptr
 	case textOff:
 		return *(*string)(unsafe.Pointer(uintptr(elemBase) + tx.off))
+	case textFn:
+		return tx.fnCached
 	default:
 		return tx.static
 	}
@@ -1130,7 +1196,8 @@ func (tx *opText) textWidth(elemBase unsafe.Pointer) int16 {
 		return 10
 	case textFn:
 		if tx.fn != nil {
-			return int16(utf8.RuneCountInString(tx.fn()))
+			tx.fnCached = tx.fn()
+			return int16(utf8.RuneCountInString(tx.fnCached))
 		}
 		return 0
 	default:
@@ -1143,15 +1210,17 @@ const (
 	progStatic uint8 = iota
 	progPtr
 	progOff
+	progInt16Ptr
 )
 
 type opProgress struct {
-	mode     uint8
-	static   int
-	ptr      *int
-	off      uintptr
-	style    Style
-	stylePtr *Style
+	mode      uint8
+	static    int
+	ptr       *int
+	int16Ptr  *int16
+	off       uintptr
+	style     Style
+	stylePtr  *Style
 }
 
 func (p *opProgress) resolve(elemBase unsafe.Pointer) int {
@@ -1160,6 +1229,8 @@ func (p *opProgress) resolve(elemBase unsafe.Pointer) int {
 		return *p.ptr
 	case progOff:
 		return *(*int)(unsafe.Pointer(uintptr(elemBase) + p.off))
+	case progInt16Ptr:
+		return int(*p.int16Ptr)
 	default:
 		return p.static
 	}
@@ -2515,6 +2586,9 @@ func (t *Template) compileProgressC(v ProgressC, parent int16, depth int, elemBa
 			ext.mode = progPtr
 			ext.ptr = val
 		}
+	case tweenNode:
+		ext.mode = progInt16Ptr
+		ext.int16Ptr = t.compileTweenInt16(val)
 	}
 
 	idx := t.addOp(Op{
@@ -4903,12 +4977,7 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 			baseStyle = *ext.stylePtr
 		}
 		style := t.effectiveStyle(baseStyle)
-		var raw string
-		if ext.mode == textFn {
-			raw = ext.fn()
-		} else {
-			raw = ext.resolve(t.elemBase)
-		}
+		raw := ext.resolve(t.elemBase)
 		text := applyTransform(raw, style.Transform)
 		x := int(absX)
 		if style.Align != AlignLeft {
@@ -5438,12 +5507,7 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 			baseStyle = *ext.stylePtr
 		}
 		style := mergeStyle(baseStyle)
-		var raw string
-		if ext.mode == textFn {
-			raw = ext.fn()
-		} else {
-			raw = ext.resolve(elemBase)
-		}
+		raw := ext.resolve(elemBase)
 		text := applyTransform(raw, style.Transform)
 		buf.WriteStringFast(int(absX), int(absY), text, style, int(maxW))
 
@@ -5925,12 +5989,7 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 						}
 					}
 					effStyle := t.effectiveStyle(textStyle)
-					var raw string
-					if ext.mode == textFn {
-						raw = ext.fn()
-					} else {
-						raw = ext.resolve(elemPtr)
-					}
+					raw := ext.resolve(elemPtr)
 					txt := applyTransform(raw, effStyle.Transform)
 					buf.WriteStringFast(int(contentX), y, txt, effStyle, int(contentW))
 				case OpRichText:

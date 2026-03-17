@@ -175,10 +175,15 @@ func (f VBoxFn) Border(b BorderStyle) VBoxFn {
 }
 
 // BorderFG sets the border foreground color.
-func (f VBoxFn) BorderFG(c Color) VBoxFn {
+func (f VBoxFn) BorderFG(c any) VBoxFn {
 	return func(children ...any) VBoxC {
 		v := f(children...)
-		v.borderFG = &c
+		switch val := c.(type) {
+		case Color:
+			v.borderFG = &val
+		case *Color:
+			v.borderFG = val
+		}
 		return v
 	}
 }
@@ -474,10 +479,15 @@ func (f HBoxFn) Border(b BorderStyle) HBoxFn {
 }
 
 // BorderFG sets the border foreground color.
-func (f HBoxFn) BorderFG(c Color) HBoxFn {
+func (f HBoxFn) BorderFG(c any) HBoxFn {
 	return func(children ...any) HBoxC {
 		h := f(children...)
-		h.borderFG = &c
+		switch val := c.(type) {
+		case Color:
+			h.borderFG = &val
+		case *Color:
+			h.borderFG = val
+		}
 		return h
 	}
 }

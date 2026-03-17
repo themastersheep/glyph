@@ -8,10 +8,12 @@ import (
 // tween describes an animation that interpolates toward a watched target value.
 // created via Animate(), which returns a tweenNode for the property compiler.
 type tween struct {
-	target   any
-	duration time.Duration
-	ease     func(float64) float64
-	from     any // initial value — if set, animation starts immediately
+	target      any
+	duration    time.Duration
+	durationPtr *time.Duration
+	ease        func(float64) float64
+	from        any    // initial value — if set, animation starts immediately
+	onComplete  func() // called once when animation reaches target
 }
 
 // AnimateFn configures and creates tweens. Methods return new AnimateFn values,
@@ -40,10 +42,15 @@ var Animate AnimateFn = func(target any) *tween {
 }
 
 // Duration sets the animation duration. Returns a new AnimateFn.
-func (f AnimateFn) Duration(d time.Duration) AnimateFn {
+func (f AnimateFn) Duration(d any) AnimateFn {
 	return func(target any) *tween {
 		tw := f(target)
-		tw.duration = d
+		switch val := d.(type) {
+		case time.Duration:
+			tw.duration = val
+		case *time.Duration:
+			tw.durationPtr = val
+		}
 		return tw
 	}
 }
@@ -54,6 +61,15 @@ func (f AnimateFn) Ease(fn func(float64) float64) AnimateFn {
 	return func(target any) *tween {
 		tw := f(target)
 		tw.ease = fn
+		return tw
+	}
+}
+
+// OnComplete sets a callback that fires once when the animation reaches its target.
+func (f AnimateFn) OnComplete(fn func()) AnimateFn {
+	return func(target any) *tween {
+		tw := f(target)
+		tw.onComplete = fn
 		return tw
 	}
 }
@@ -77,12 +93,19 @@ type tweenNode interface {
 	getTweenDuration() time.Duration
 	getTweenEasing() func(float64) float64
 	getTweenFrom() any
+	getTweenOnComplete() func()
 }
 
 func (tw *tween) getTarget() any                        { return tw.target }
-func (tw *tween) getTweenDuration() time.Duration       { return tw.duration }
+func (tw *tween) getTweenDuration() time.Duration {
+	if tw.durationPtr != nil {
+		return *tw.durationPtr
+	}
+	return tw.duration
+}
 func (tw *tween) getTweenEasing() func(float64) float64 { return tw.ease }
 func (tw *tween) getTweenFrom() any                     { return tw.from }
+func (tw *tween) getTweenOnComplete() func()            { return tw.onComplete }
 
 var _ tweenNode = (*tween)(nil)
 
