@@ -111,10 +111,7 @@ func main() {
 	refreshCWDs()
 	refreshProcs()
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	input := Input().Placeholder("filter processes...").Bind()
 

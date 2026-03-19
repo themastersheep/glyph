@@ -22,10 +22,7 @@ func main() {
 		Field("Password", password),
 	)
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	app.SetView(
 		VBox(

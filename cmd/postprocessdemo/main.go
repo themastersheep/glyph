@@ -111,10 +111,7 @@ func (d dropShadowEffect) Apply(buf *Buffer, ctx PostContext) {
 }
 
 func main() {
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	progress := 65
 	progress2 := 38

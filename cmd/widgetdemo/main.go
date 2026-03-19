@@ -14,10 +14,7 @@ import (
 var partialBlocks = []rune{' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'}
 
 func main() {
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	// State
 	progress := 0.65

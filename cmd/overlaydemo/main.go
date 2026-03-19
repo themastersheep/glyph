@@ -29,10 +29,7 @@ func main() {
 
 	var popupRef NodeRef
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	app.SetView(
 		VBox.Fill(rpBase).CascadeStyle(&Style{FG: rpText}).Grow(1)(

@@ -38,10 +38,7 @@ func main() {
 
 	glyphVer := glyphVersion()
 
-	app, err := NewInlineApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewInlineApp()
 
 	app.SetView(
 		VBox.Border(BorderSingle).FitContent()(

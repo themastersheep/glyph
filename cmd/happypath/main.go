@@ -30,10 +30,7 @@ func main() {
 		},
 	}
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	var showCounter = true
 

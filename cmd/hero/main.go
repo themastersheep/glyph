@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"time"
 
 	. "github.com/kungfusheep/glyph"
@@ -13,10 +12,7 @@ func main() {
 	history := []float64{3, 5, 2, 7, 4, 6, 3, 5, 8, 4}
 	tick := 0
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	app.SetView(
 		VBox.Margin(10).Border(BorderDouble).Title("SYS").FitContent()(

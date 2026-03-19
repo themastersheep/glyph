@@ -398,7 +398,7 @@ func ExampleSpan() {
 // Full-screen app.
 // SetView compiles the tree once, Handle binds keys, Run blocks until Stop is called.
 func ExampleNewApp() {
-	app, _ := NewApp()
+	app := NewApp()
 
 	counter := 0
 	app.SetView(
@@ -414,7 +414,7 @@ func ExampleNewApp() {
 // Inline app.
 // Renders within the terminal flow instead of taking over the screen. Height sets the visible rows.
 func ExampleNewInlineApp() {
-	app, _ := NewInlineApp()
+	app := NewInlineApp()
 
 	status := "loading..."
 	app.SetView(Text(&status))
@@ -425,7 +425,7 @@ func ExampleNewInlineApp() {
 // Multi-view routing.
 // Named views with per-view key bindings. Go switches between views; each view is compiled independently.
 func ExampleApp_multiView() {
-	app, _ := NewApp()
+	app := NewApp()
 
 	app.View("home", VBox(
 		Text("Welcome"),
@@ -443,7 +443,7 @@ func ExampleApp_multiView() {
 // Goroutine updates.
 // Mutate the value behind the pointer from any goroutine, then call RequestRender to trigger a redraw.
 func ExampleApp_goroutine() {
-	app, _ := NewApp()
+	app := NewApp()
 
 	status := "waiting..."
 	app.SetView(Text(&status))
@@ -460,7 +460,7 @@ func ExampleApp_goroutine() {
 // Views with text input.
 // NoCounts disables vim-style count prefixes, preventing number keys from being swallowed before reaching an input.
 func ExampleViewBuilder() {
-	app, _ := NewApp()
+	app := NewApp()
 
 	var name string
 	app.View("editor",
@@ -602,7 +602,7 @@ func ExampleJumpC() {
 // App-level jump mode.
 // Press the jump key to enter jump mode, then type a target label to select it.
 func ExampleJumpC_app() {
-	app, _ := NewApp()
+	app := NewApp()
 
 	items := []string{"Save", "Load", "Quit"}
 	app.SetView(VBox(

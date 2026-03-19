@@ -3,7 +3,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 
 	. "github.com/kungfusheep/glyph"
 )
@@ -11,10 +10,7 @@ import (
 func main() {
 	yes := false
 
-	app, err := NewInlineApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewInlineApp()
 
 	app.ClearOnExit(true).
 		SetView(HBox(

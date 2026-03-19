@@ -10,10 +10,7 @@ import (
 )
 
 func main() {
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	contentHeight := 100_000
 	layer := NewLayer()

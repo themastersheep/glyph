@@ -3,7 +3,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 
 	. "github.com/kungfusheep/glyph"
 )
@@ -13,10 +12,7 @@ func main() {
 	cancelled := false
 	var list *ListC[string]
 
-	app, err := NewInlineApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewInlineApp()
 
 	app.ClearOnExit(true).
 		SetView(VBox.FitContent()(

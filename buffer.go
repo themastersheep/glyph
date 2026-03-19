@@ -309,9 +309,43 @@ func (b *Buffer) WriteLeader(x, y int, label, value string, width int, fill rune
 // sparklineChars maps values 0-7 to Unicode block characters.
 var sparklineChars = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
+func sparklineWindow(dataLen, width int) (start, cols, offset int) {
+	if width <= 0 || dataLen <= 0 {
+		return 0, 0, 0
+	}
+	start = 0
+	if dataLen > width {
+		start = dataLen - width
+	}
+	cols = dataLen - start
+	if cols > width {
+		cols = width
+	}
+	offset = width - cols
+	return start, cols, offset
+}
+
+func sparklineRange(values []float64, start, cols int, min, max float64) (float64, float64) {
+	if min != 0 || max != 0 || cols <= 0 {
+		return min, max
+	}
+
+	window := values[start : start+cols]
+	min, max = window[0], window[0]
+	for _, v := range window[1:] {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return min, max
+}
+
 // WriteSparkline writes a sparkline chart using Unicode block characters.
 func (b *Buffer) WriteSparkline(x, y int, values []float64, width int, min, max float64, style Style) {
-	if y < 0 || y >= b.height || len(values) == 0 {
+	if y < 0 || y >= b.height || len(values) == 0 || width <= 0 {
 		return
 	}
 	if y > b.dirtyMaxY {
@@ -319,38 +353,18 @@ func (b *Buffer) WriteSparkline(x, y int, values []float64, width int, min, max 
 	}
 	b.dirtyRows[y] = true
 
-	// Auto-detect min/max if not specified
-	if min == 0 && max == 0 {
-		min, max = values[0], values[0]
-		for _, v := range values {
-			if v < min {
-				min = v
-			}
-			if v > max {
-				max = v
-			}
-		}
-	}
+	base := y * b.width
+	dataLen := len(values)
+
+	// render right-aligned: newest data at right edge, old data scrolls off left
+	start, cols, offset := sparklineWindow(dataLen, width)
+	min, max = sparklineRange(values, start, cols, min, max)
 
 	// Handle case where all values are the same
 	valRange := max - min
 	if valRange == 0 {
 		valRange = 1
 	}
-
-	base := y * b.width
-	dataLen := len(values)
-
-	// render right-aligned: newest data at right edge, old data scrolls off left
-	start := 0
-	if dataLen > width {
-		start = dataLen - width
-	}
-	cols := dataLen - start
-	if cols > width {
-		cols = width
-	}
-	offset := width - cols
 
 	for i := 0; i < width && x+i < b.width; i++ {
 		dataIdx := start + (i - offset)
@@ -383,41 +397,21 @@ func (b *Buffer) WriteSparkline(x, y int, values []float64, width int, min, max 
 // total vertical resolution is height * 8 levels.
 // renders bottom-up: full blocks for saturated rows, fractional block for the top cell, space above.
 func (b *Buffer) WriteSparklineMulti(x, y int, values []float64, width, height int, min, max float64, style Style) {
-	if height <= 0 || len(values) == 0 {
+	if height <= 0 || width <= 0 || len(values) == 0 {
 		return
-	}
-
-	// auto-detect min/max if not specified
-	if min == 0 && max == 0 {
-		min, max = values[0], values[0]
-		for _, v := range values {
-			if v < min {
-				min = v
-			}
-			if v > max {
-				max = v
-			}
-		}
-	}
-
-	valRange := max - min
-	if valRange == 0 {
-		valRange = 1
 	}
 
 	totalLevels := height * 8
 	dataLen := len(values)
 
 	// right-aligned: newest data at right edge, 1:1 mapping
-	startData := 0
-	if dataLen > width {
-		startData = dataLen - width
+	startData, cols, colOffset := sparklineWindow(dataLen, width)
+	min, max = sparklineRange(values, startData, cols, min, max)
+
+	valRange := max - min
+	if valRange == 0 {
+		valRange = 1
 	}
-	cols := dataLen - startData
-	if cols > width {
-		cols = width
-	}
-	colOffset := width - cols
 
 	for i := 0; i < width && x+i < b.width; i++ {
 		if x+i < 0 {

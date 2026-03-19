@@ -11,10 +11,7 @@ import (
 )
 
 func main() {
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	// create a pipe - we'll write to pw, Log reads from pr
 	pr, pw := io.Pipe()

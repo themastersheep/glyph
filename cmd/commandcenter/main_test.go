@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"strings"
@@ -9,6 +10,12 @@ import (
 
 	. "github.com/kungfusheep/glyph"
 )
+
+func newTestDashboard() *dashboard {
+	s := newDashboard()
+	go io.Copy(io.Discard, s.logR)
+	return s
+}
 
 func TestCommandCenterLayout(t *testing.T) {
 	reqData := make([]float64, 40)
@@ -21,17 +28,17 @@ func TestCommandCenterLayout(t *testing.T) {
 	}
 
 	reqRate := "142 req/s"
-	p99Lat  := "24ms"
+	p99Lat := "24ms"
 	errRate := "0.4%"
-	clock   := "12:00:00"
+	clock := "12:00:00"
 
 	services := []service{
-		{Name: "api-gateway",      Status: "live", CPU:  7.2, CPUStr: "  7.2%", Mem: "240 MB"},
-		{Name: "postgres-primary", Status: "live", CPU:  3.8, CPUStr: "  3.8%", Mem: "1.2 GB"},
-		{Name: "redis-cluster",    Status: "warn", CPU:  6.1, CPUStr: "  6.1%", Mem: "380 MB"},
-		{Name: "worker-pool",      Status: "live", CPU:  4.9, CPUStr: "  4.9%", Mem: "190 MB"},
-		{Name: "cdn-edge",         Status: "live", CPU:  1.1, CPUStr: "  1.1%", Mem: " 42 MB"},
-		{Name: "auth-service",     Status: "live", CPU:  5.4, CPUStr: "  5.4%", Mem: "128 MB"},
+		{Name: "api-gateway", Status: "live", CPU: 7.2, CPUStr: "  7.2%", Mem: "240 MB"},
+		{Name: "postgres-primary", Status: "live", CPU: 3.8, CPUStr: "  3.8%", Mem: "1.2 GB"},
+		{Name: "redis-cluster", Status: "warn", CPU: 6.1, CPUStr: "  6.1%", Mem: "380 MB"},
+		{Name: "worker-pool", Status: "live", CPU: 4.9, CPUStr: "  4.9%", Mem: "190 MB"},
+		{Name: "cdn-edge", Status: "live", CPU: 1.1, CPUStr: "  1.1%", Mem: " 42 MB"},
+		{Name: "auth-service", Status: "live", CPU: 5.4, CPUStr: "  5.4%", Mem: "128 MB"},
 	}
 	for i := range services {
 		services[i].CPUHistory = make([]float64, 20)
@@ -47,8 +54,8 @@ func TestCommandCenterLayout(t *testing.T) {
 	}
 
 	selectedSvc := services[0]
-	showModal   := false
-	restarting  := false
+	showModal := false
+	restarting := false
 	spinnerFrame := 0
 
 	metricPanel := func(title string, data *[]float64, label *string, col Color) any {
@@ -193,4 +200,57 @@ func TestCommandCenterLayout(t *testing.T) {
 
 	// suppress unused variable warnings from the test scope
 	_ = spinnerFrame
+}
+
+func TestCommandCenterTickStartsRecovery(t *testing.T) {
+	s := newTestDashboard()
+	s.services[2].Status = "live"
+	s.wasDegraded = true
+
+	s.tick()
+
+	if s.recoveryTick != 1 {
+		t.Fatalf("expected recovery to begin on the next tick, got %d", s.recoveryTick)
+	}
+	if !strings.Contains(s.reqRate, "req/s") {
+		t.Fatalf("expected reqRate label to refresh, got %q", s.reqRate)
+	}
+}
+
+func TestCommandCenterRecoverySettlesQuickly(t *testing.T) {
+	s := newTestDashboard()
+	s.services[2].Status = "live"
+	s.wasDegraded = true
+
+	for i := 0; i < recoveryTicks; i++ {
+		s.tick()
+	}
+
+	if s.recoveryTick != recoveryTicks {
+		t.Fatalf("expected recovery to complete in %d ticks, got %d", recoveryTicks, s.recoveryTick)
+	}
+	if got := lastSample(s.reqData); got < 110 {
+		t.Fatalf("expected request rate to rebound quickly, got %.1f", got)
+	}
+	if got := lastSample(s.latData); got > 32 {
+		t.Fatalf("expected latency to settle quickly, got %.1f", got)
+	}
+	if got := lastSample(s.errData); got > 1.6 {
+		t.Fatalf("expected error rate to settle quickly, got %.2f", got)
+	}
+}
+
+func TestCommandCenterTickKeepsSelectedServiceFresh(t *testing.T) {
+	s := newTestDashboard()
+	s.selectedPtr = &s.services[2]
+	s.selectedSvc = service{Name: s.selectedPtr.Name, CPUStr: "  0.0%", Status: "live"}
+
+	s.tick()
+
+	if s.selectedSvc.CPUStr != s.selectedPtr.CPUStr {
+		t.Fatalf("expected selected service CPU %q to match live row %q", s.selectedSvc.CPUStr, s.selectedPtr.CPUStr)
+	}
+	if s.selectedSvc.Status != s.selectedPtr.Status {
+		t.Fatalf("expected selected service status %q to match live row %q", s.selectedSvc.Status, s.selectedPtr.Status)
+	}
 }

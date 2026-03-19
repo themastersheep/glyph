@@ -34,10 +34,7 @@ func main() {
 		{"○", "Health check", "pending"},
 	}
 
-	app, err := NewInlineApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewInlineApp()
 
 	app.SetView(VBox(
 		ForEach(&steps, func(s *step) any {

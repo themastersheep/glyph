@@ -24,6 +24,7 @@ type Screen struct {
 	height int
 
 	// Terminal state
+
 	origTermios *unix.Termios
 	inRawMode   bool
 	inlineMode  bool // Inline mode (no alternate buffer)
@@ -33,6 +34,7 @@ type Screen struct {
 	sigChan    chan os.Signal
 
 	// Rendering state
+
 	lastStyle  Style        // Last style we emitted (for optimization)
 	buf        bytes.Buffer // Reusable buffer for building output
 	forceRGB   bool         // emit all colours as true color RGB
@@ -50,7 +52,7 @@ type Size struct {
 
 // NewScreen creates a new screen writing to the given writer.
 // Pass nil to use os.Stdout.
-func NewScreen(w io.Writer) (*Screen, error) {
+func NewScreen(w io.Writer) *Screen {
 	if w == nil {
 		w = os.Stdout
 	}
@@ -74,7 +76,7 @@ func NewScreen(w io.Writer) (*Screen, error) {
 		lastStyle:  DefaultStyle(),
 	}
 
-	return s, nil
+	return s
 }
 
 // getTerminalSize returns the current terminal dimensions.
@@ -152,7 +154,7 @@ func (s *Screen) EnterRawMode() error {
 	s.writeString("\x1b[H")      // Move cursor to home position
 	s.writeString("\x1b[?25l")   // Hide cursor
 	s.writeString("\x1b[?2004h") // Enable bracketed paste mode
-	s.syncOutput = true           // wrap frames with synchronized output (reduces tearing)
+	s.syncOutput = true          // wrap frames with synchronized output (reduces tearing)
 
 	return nil
 }

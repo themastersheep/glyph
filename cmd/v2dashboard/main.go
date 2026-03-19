@@ -210,10 +210,7 @@ func main() {
 	// Enable debug timing
 	DebugTiming = true
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	// Initialize state
 	state := &State{

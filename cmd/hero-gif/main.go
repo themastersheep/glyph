@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"time"
 
 	. "github.com/kungfusheep/glyph"
@@ -14,10 +13,7 @@ func main() {
 	accent := Style{FG: Cyan}
 	tick := 0
 
-	app, err := NewInlineApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewInlineApp()
 
 	app.SetView(
 		VBox.Border(BorderDouble).BorderFG(Cyan).Title("SYS").FitContent().CascadeStyle(&accent)(

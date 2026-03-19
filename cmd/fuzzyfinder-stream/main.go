@@ -15,10 +15,7 @@ type LogEntry struct {
 }
 
 func main() {
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	var entries []LogEntry
 	var fl *FilterListC[LogEntry]

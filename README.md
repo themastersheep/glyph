@@ -4,7 +4,7 @@ Declarative terminal UI framework for Go. **[useglyph.sh](https://useglyph.sh)**
 
 ![hero](./assets/hero.gif)
 
-```go
+```golang
 VBox.Border(BorderDouble).Title("SYS").FitContent()(
     If(&online).
         Then(Text("● ONLINE")).
@@ -36,16 +36,10 @@ go get github.com/kungfusheep/glyph
 ```go
 package main
 
-import (
-    "log"
-    . "github.com/kungfusheep/glyph"
-)
+import . "github.com/kungfusheep/glyph"
 
 func main() {
-    app, err := NewApp()
-    if err != nil {
-        log.Fatal(err)
-    }
+    app := NewApp()
     app.SetView(Text("Hello, terminal!")).Run()
 }
 ```

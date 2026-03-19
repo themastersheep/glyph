@@ -35,10 +35,7 @@ var help = struct {
 }
 
 func main() {
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	// Global handler (works on all views)
 	app.Handle("q", func(_ riffkey.Match) {

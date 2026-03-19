@@ -183,6 +183,47 @@ func TestBuffer(t *testing.T) {
 	})
 }
 
+func TestWriteSparklineScalesToVisibleWindow(t *testing.T) {
+	buf := NewBuffer(3, 1)
+	buf.WriteSparkline(0, 0, []float64{0, 100, 101, 102}, 3, 0, 0, DefaultStyle())
+
+	got := []rune{
+		buf.Get(0, 0).Rune,
+		buf.Get(1, 0).Rune,
+		buf.Get(2, 0).Rune,
+	}
+	want := []rune{'▁', '▄', '█'}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("column %d: got %q, want %q", i, string(got[i]), string(want[i]))
+		}
+	}
+}
+
+func TestWriteSparklineMultiScalesToVisibleWindow(t *testing.T) {
+	buf := NewBuffer(3, 2)
+	buf.WriteSparklineMulti(0, 0, []float64{0, 100, 101, 102}, 3, 2, 0, 0, DefaultStyle())
+
+	if got := buf.Get(0, 0).Rune; got != ' ' {
+		t.Fatalf("top-left: got %q, want space", string(got))
+	}
+	if got := buf.Get(0, 1).Rune; got != ' ' {
+		t.Fatalf("bottom-left: got %q, want space", string(got))
+	}
+	if got := buf.Get(1, 0).Rune; got != ' ' {
+		t.Fatalf("top-middle: got %q, want space", string(got))
+	}
+	if got := buf.Get(1, 1).Rune; got != '█' {
+		t.Fatalf("bottom-middle: got %q, want full block", string(got))
+	}
+	if got := buf.Get(2, 0).Rune; got != '█' {
+		t.Fatalf("top-right: got %q, want full block", string(got))
+	}
+	if got := buf.Get(2, 1).Rune; got != '█' {
+		t.Fatalf("bottom-right: got %q, want full block", string(got))
+	}
+}
+
 func TestRegion(t *testing.T) {
 	t.Run("Coordinates", func(t *testing.T) {
 		buf := NewBuffer(20, 20)

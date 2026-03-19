@@ -118,10 +118,7 @@ func main() {
 			return Text(&item.Display).Style(style)
 		})
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	app.SetView(VBox(
 		// Header

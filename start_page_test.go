@@ -18,7 +18,7 @@ type startTask struct {
 
 // start.html: section 02, first app (counter)
 func TestStart_firstApp(t *testing.T) {
-	app, _ := NewApp()
+	app := NewApp()
 	count := 0
 
 	app.SetView(
@@ -36,7 +36,7 @@ func TestStart_firstApp(t *testing.T) {
 
 // start.html: section 03, lists with render
 func TestStart_listRender(t *testing.T) {
-	app, _ := NewApp()
+	app := NewApp()
 
 	tasks := []startTask{
 		{"Write tutorial", false, 0},
@@ -96,7 +96,7 @@ func TestStart_statusBar(t *testing.T) {
 
 // start.html: section 04, full split-pane app
 func TestStart_fullSplitApp(t *testing.T) {
-	app, _ := NewApp()
+	app := NewApp()
 
 	tasks := []startTask{
 		{"Write tutorial", false, 1},

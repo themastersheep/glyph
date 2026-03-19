@@ -125,6 +125,7 @@ type dashboard struct {
 	// recovery lerp
 	wasDegraded  bool
 	recoveryTick int
+	sampleTick   int
 }
 
 func newDashboard() *dashboard {
@@ -201,10 +202,7 @@ func main() {
 	s := newDashboard()
 
 	var modalRouter *riffkey.Router
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	colorAnim := Animate.Duration(&s.colorAnimDur).Ease(EaseOutCubic)
 
@@ -383,7 +381,7 @@ func main() {
 									Text("  restarting").FG(&s.pal.muted),
 									HBox.Grow(1)(
 										Progress(
-											Animate.Duration(2*time.Second).Ease(EaseOutCubic).OnComplete(restartComplete)(&s.restartPct),
+											Animate.Duration(restartDuration).Ease(EaseOutCubic).OnComplete(restartComplete)(&s.restartPct),
 										).FG(&s.pal.foam),
 									),
 								),
@@ -435,7 +433,7 @@ func main() {
 	})
 
 	go func() {
-		for range time.NewTicker(400 * time.Millisecond).C {
+		for range time.NewTicker(demoTickInterval).C {
 			s.tick()
 		}
 	}()
@@ -445,16 +443,187 @@ func main() {
 	}
 }
 
-const recoveryTicks = 10
+const (
+	recoveryTicks    = 4
+	demoTickInterval = 300 * time.Millisecond
+	restartDuration  = 1600 * time.Millisecond
+)
 
-func (s *dashboard) tick() {
-	hasDegraded := false
+func clamp(v, min, max float64) float64 {
+	return math.Max(min, math.Min(max, v))
+}
+
+func lastSample(series []float64) float64 {
+	return series[len(series)-1]
+}
+
+func pushSample(series []float64, value float64) {
+	copy(series, series[1:])
+	series[len(series)-1] = value
+}
+
+func stepToward(current, target, mix, noise, min, max float64, rng *rand.Rand) float64 {
+	next := current + (target-current)*mix + (rng.Float64()*2-1)*noise
+	return clamp(next, min, max)
+}
+
+func (s *dashboard) hasDegradedService() bool {
 	for _, svc := range s.services {
 		if svc.Status == "warn" {
-			hasDegraded = true
-			break
+			return true
 		}
 	}
+	return false
+}
+
+func (s *dashboard) nextMetricSample(hasDegraded bool) (float64, float64, float64) {
+	s.sampleTick++
+	rps := lastSample(s.reqData)
+	lat := lastSample(s.latData)
+	er := lastSample(s.errData)
+
+	if hasDegraded {
+		rps = stepToward(rps, 50, 0.24, 1.4, 44, 56, s.rng)
+		lat = stepToward(lat, 61, 0.26, 1.2, 57, 70, s.rng)
+		er = stepToward(er, 6.0, 0.22, 0.10, 5.4, 6.9, s.rng)
+		if s.sampleTick%5 == 0 {
+			rps = clamp(rps-(3+s.rng.Float64()*2.5), 40, 56)
+			lat = clamp(lat+(4+s.rng.Float64()*6), 57, 79)
+			er = clamp(er+(0.2+s.rng.Float64()*0.35), 5.4, 7.5)
+		}
+		return rps, lat, er
+	}
+
+	if s.recoveryTick < recoveryTicks {
+		s.recoveryTick++
+		t := float64(s.recoveryTick) / float64(recoveryTicks)
+		t = 1 - math.Pow(1-t, 3)
+		rps = stepToward(rps, lerp(52, 125, t), 0.62, 1.1, 52, 128, s.rng)
+		lat = stepToward(lat, lerp(60, 22, t), 0.64, 0.9, 21, 64, s.rng)
+		er = stepToward(er, lerp(6.0, 0.8, t), 0.58, 0.08, 0.7, 6.3, s.rng)
+		if s.recoveryTick == 1 {
+			lat = clamp(lat+(2+s.rng.Float64()*1.5), 21, 66)
+			er = clamp(er+(0.1+s.rng.Float64()*0.15), 0.7, 6.4)
+		}
+		return rps, lat, er
+	}
+
+	rps = stepToward(rps, 125, 0.20, 1.4, 121, 129, s.rng)
+	lat = stepToward(lat, 22, 0.22, 0.8, 20, 28, s.rng)
+	er = stepToward(er, 0.8, 0.20, 0.05, 0.6, 1.2, s.rng)
+	if s.sampleTick%9 == 0 {
+		lat = clamp(lat+(1.2+s.rng.Float64()*1.2), 20, 30)
+	}
+	return rps, lat, er
+}
+
+func (s *dashboard) updateServices(hasDegraded bool) {
+	recovering := !hasDegraded && s.recoveryTick > 0 && s.recoveryTick < recoveryTicks
+	recoveryProgress := float64(s.recoveryTick) / float64(recoveryTicks)
+	recoveryProgress = 1 - math.Pow(1-recoveryProgress, 3)
+
+	for i := range s.services {
+		healthyTarget := map[string]float64{
+			"api-gateway":      7.2,
+			"postgres-primary": 3.8,
+			"redis-cluster":    4.8,
+			"worker-pool":      4.9,
+			"cdn-edge":         1.1,
+			"auth-service":     5.4,
+		}[s.services[i].Name]
+		degradedTarget := map[string]float64{
+			"api-gateway":      9.5,
+			"postgres-primary": 4.6,
+			"redis-cluster":    19.5,
+			"worker-pool":      6.4,
+			"cdn-edge":         1.4,
+			"auth-service":     6.1,
+		}[s.services[i].Name]
+
+		target := healthyTarget
+		switch {
+		case hasDegraded:
+			target = degradedTarget
+		case recovering:
+			target = lerp(degradedTarget, healthyTarget, recoveryProgress)
+		}
+
+		target += s.rng.Float64()*0.8 - 0.4
+		if hasDegraded && s.services[i].Name == "redis-cluster" && s.sampleTick%5 == 0 {
+			target += 2 + s.rng.Float64()*1.5
+		}
+
+		mix := 0.28
+		noise := 0.45
+		if s.services[i].Name == "redis-cluster" {
+			mix = 0.36
+			noise = 0.65
+		}
+		if recovering {
+			mix = 0.48
+			noise = 0.35
+			if s.services[i].Name == "redis-cluster" {
+				mix = 0.62
+				noise = 0.4
+			}
+		}
+
+		s.services[i].CPU = stepToward(s.services[i].CPU, target, mix, noise, 0.5, 31, s.rng)
+		s.services[i].CPUStr = fmt.Sprintf("%5.1f%%", s.services[i].CPU)
+		pushSample(s.services[i].CPUHistory, s.services[i].CPU)
+	}
+
+	if s.svcList != nil {
+		s.svcList.Refresh()
+	}
+}
+
+func (s *dashboard) syncSelectedService() {
+	if s.selectedPtr == nil {
+		return
+	}
+	s.selectedSvc = *s.selectedPtr
+}
+
+func (s *dashboard) emitLogLines(hasDegraded bool) {
+	recovering := !hasDegraded && s.recoveryTick > 0 && s.recoveryTick < recoveryTicks
+	burst := 1
+	if (hasDegraded && s.sampleTick%4 == 0) || (recovering && s.recoveryTick <= 2) {
+		burst = 2
+	}
+
+	for i := 0; i < burst; i++ {
+		switch {
+		case hasDegraded:
+			fmt.Fprintf(s.logW, "%s  %-6s %-22s %d  %s\n",
+				s.clock,
+				[]string{"GET", "GET", "POST", "PUT", "GET"}[s.rng.Intn(5)],
+				[]string{"/api/cache/warm", "/api/sessions", "/api/users", "/api/orders", "/api/health"}[s.rng.Intn(5)],
+				[]int{503, 500, 502, 503, 200, 500}[s.rng.Intn(6)],
+				[]string{"340ms", "812ms", "1.1s ", "1.4s ", "680ms", "920ms"}[s.rng.Intn(6)],
+			)
+		case recovering:
+			fmt.Fprintf(s.logW, "%s  %-6s %-22s %d  %s\n",
+				s.clock,
+				[]string{"GET", "POST", "PUT", "GET", "DELETE"}[s.rng.Intn(5)],
+				[]string{"/api/health", "/api/cache/warm", "/api/orders", "/api/metrics", "/api/sessions"}[s.rng.Intn(5)],
+				[]int{200, 200, 202, 204, 304}[s.rng.Intn(5)],
+				[]string{"18ms ", "24ms ", "42ms ", "61ms ", "86ms "}[s.rng.Intn(5)],
+			)
+		default:
+			fmt.Fprintf(s.logW, "%s  %-6s %-22s %d  %dms\n",
+				s.clock,
+				[]string{"GET", "POST", "GET", "PUT", "DELETE"}[s.rng.Intn(5)],
+				[]string{"/api/users", "/api/deploy", "/api/health", "/api/orders", "/api/metrics"}[s.rng.Intn(5)],
+				[]int{200, 200, 200, 201, 204, 200, 200, 304}[s.rng.Intn(8)],
+				2+s.rng.Intn(45),
+			)
+		}
+	}
+}
+
+func (s *dashboard) tick() {
+	hasDegraded := s.hasDegradedService()
 
 	// detect degraded→healthy transition
 	if s.wasDegraded && !hasDegraded {
@@ -462,30 +631,11 @@ func (s *dashboard) tick() {
 	}
 	s.wasDegraded = hasDegraded
 
-	var rps, lat, er float64
-	if hasDegraded {
-		rps = 50 + s.rng.Float64()*2
-		lat = 60 + s.rng.Float64()*2
-		er = 6 + s.rng.Float64()*0.3
-	} else if s.recoveryTick < recoveryTicks {
-		s.recoveryTick++
-		t := float64(s.recoveryTick) / float64(recoveryTicks)
-		t = 1 - math.Pow(1-t, 2)
-		rps = lerp(50, 125, t) + s.rng.Float64()*2
-		lat = lerp(60, 22, t) + s.rng.Float64()*2
-		er = lerp(6, 0.8, t) + s.rng.Float64()*0.3
-	} else {
-		rps = 125 + s.rng.Float64()*2
-		lat = 22 + s.rng.Float64()*2
-		er = 0.8 + s.rng.Float64()*0.3
-	}
-
-	copy(s.reqData, s.reqData[1:])
-	s.reqData[len(s.reqData)-1] = rps
-	copy(s.latData, s.latData[1:])
-	s.latData[len(s.latData)-1] = lat
-	copy(s.errData, s.errData[1:])
-	s.errData[len(s.errData)-1] = er
+	rps, lat, er := s.nextMetricSample(hasDegraded)
+	pushSample(s.reqData, rps)
+	pushSample(s.latData, lat)
+	pushSample(s.errData, er)
+	s.updateServices(hasDegraded)
 
 	s.reqRate = fmt.Sprintf("%.0f req/s", rps)
 	s.p99Lat = fmt.Sprintf("%.0fms", lat)
@@ -494,35 +644,10 @@ func (s *dashboard) tick() {
 
 	s.degraded = hasDegraded
 
-	for i := range s.services {
-		if s.services[i].Name == "redis-cluster" && s.services[i].Status == "warn" {
-			s.services[i].CPU = math.Max(15, math.Min(25, s.services[i].CPU+s.rng.Float64()*4-2))
-		} else {
-			s.services[i].CPU = math.Max(0.5, s.services[i].CPU+s.rng.Float64()*2-1)
-		}
-		s.services[i].CPUStr = fmt.Sprintf("%5.1f%%", s.services[i].CPU)
-		copy(s.services[i].CPUHistory, s.services[i].CPUHistory[1:])
-		s.services[i].CPUHistory[len(s.services[i].CPUHistory)-1] = s.services[i].CPU
-	}
-	s.svcList.Refresh()
+	s.syncSelectedService()
+	s.emitLogLines(hasDegraded)
 
-	if hasDegraded {
-		fmt.Fprintf(s.logW, "%s  %-6s %-22s %d  %s\n",
-			s.clock,
-			[]string{"GET", "GET", "POST", "GET", "PUT"}[s.rng.Intn(5)],
-			[]string{"/api/cache/warm", "/api/sessions", "/api/users", "/api/health", "/api/orders"}[s.rng.Intn(5)],
-			[]int{503, 500, 502, 200, 200, 503, 500, 200}[s.rng.Intn(8)],
-			[]string{"340ms", "812ms", "1.1s ", "1.4s ", "22ms", "680ms"}[s.rng.Intn(6)],
-		)
-	} else {
-		fmt.Fprintf(s.logW, "%s  %-6s %-22s %d  %dms\n",
-			s.clock,
-			[]string{"GET", "POST", "GET", "PUT", "DELETE"}[s.rng.Intn(5)],
-			[]string{"/api/users", "/api/deploy", "/api/health", "/api/orders", "/api/metrics"}[s.rng.Intn(5)],
-			[]int{200, 200, 200, 201, 204, 200, 200, 304}[s.rng.Intn(8)],
-			2+s.rng.Intn(45),
-		)
+	if s.app != nil {
+		s.app.RequestRender()
 	}
-
-	s.app.RequestRender()
 }

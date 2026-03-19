@@ -72,7 +72,7 @@ func main() {
 	}
 	refresh()
 
-	app, _ := NewApp()
+	app := NewApp()
 	app.JumpKey("g")
 	app.SetView(
 		VBox(

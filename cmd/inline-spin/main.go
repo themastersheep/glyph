@@ -14,10 +14,7 @@ func main() {
 	status := "Installing dependencies..."
 	done := false
 
-	app, err := NewInlineApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewInlineApp()
 
 	app.SetView(HBox(
 		If(&done).

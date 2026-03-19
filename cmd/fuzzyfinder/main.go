@@ -37,7 +37,7 @@ func main() {
 
 	selected := ""
 
-	app, _ := NewApp()
+	app := NewApp()
 	app.SetView(
 		VBox(
 			FilterList(&packages, func(p *Pkg) string { return p.Name }).

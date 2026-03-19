@@ -18,7 +18,7 @@ func main() {
 	preview := ""
 	showSidebar := true
 
-	app, _ := NewApp()
+	app := NewApp()
 	app.SetView(
 		HBox(
 			If(&showSidebar).Then(

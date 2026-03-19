@@ -3,7 +3,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 
 	. "github.com/kungfusheep/glyph"
 )
@@ -19,10 +18,7 @@ func main() {
 		Field("Token", token),
 	)
 
-	app, err := NewInlineApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewInlineApp()
 
 	app.ClearOnExit(true).
 		SetView(form).

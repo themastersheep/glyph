@@ -19,7 +19,7 @@ func main() {
 
 	pr, pw := io.Pipe()
 
-	app, _ := NewInlineApp()
+	app := NewInlineApp()
 	app.ClearOnExit(true)
 	app.SetView(
 		VBox.FitContent()(

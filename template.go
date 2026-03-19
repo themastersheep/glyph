@@ -1121,6 +1121,8 @@ const (
 	textPtr
 	textOff
 	textFn
+	textIntPtr
+	textFloat64Ptr
 )
 
 type opIf struct {
@@ -1162,14 +1164,16 @@ type opCustomLayout struct {
 }
 
 type opText struct {
-	mode     uint8
-	static   string
-	ptr      *string
-	off      uintptr
-	fn       func() string
-	fnCached string // cached result from fn(), set during width measurement
-	style    Style
-	stylePtr *Style // dynamic style override (nil = use static)
+	mode       uint8
+	static     string
+	ptr        *string
+	intPtr     *int
+	float64Ptr *float64
+	off        uintptr
+	fn         func() string
+	fnCached   string // cached result from fn(), set during width measurement
+	style      Style
+	stylePtr   *Style // dynamic style override (nil = use static)
 }
 
 func (tx *opText) resolve(elemBase unsafe.Pointer) string {
@@ -1180,6 +1184,10 @@ func (tx *opText) resolve(elemBase unsafe.Pointer) string {
 		return *(*string)(unsafe.Pointer(uintptr(elemBase) + tx.off))
 	case textFn:
 		return tx.fnCached
+	case textIntPtr:
+		return strconv.Itoa(*tx.intPtr)
+	case textFloat64Ptr:
+		return strconv.FormatFloat(*tx.float64Ptr, 'f', -1, 64)
 	default:
 		return tx.static
 	}
@@ -1200,6 +1208,10 @@ func (tx *opText) textWidth(elemBase unsafe.Pointer) int16 {
 			return int16(utf8.RuneCountInString(tx.fnCached))
 		}
 		return 0
+	case textIntPtr:
+		return int16(len(strconv.Itoa(*tx.intPtr)))
+	case textFloat64Ptr:
+		return int16(len(strconv.FormatFloat(*tx.float64Ptr, 'f', -1, 64)))
 	default:
 		return int16(utf8.RuneCountInString(tx.static))
 	}
@@ -2457,6 +2469,12 @@ func (t *Template) compileTextC(v TextC, parent int16, depth int, elemBase unsaf
 	case func() string:
 		ext.mode = textFn
 		ext.fn = val
+	case *int:
+		ext.mode = textIntPtr
+		ext.intPtr = val
+	case *float64:
+		ext.mode = textFloat64Ptr
+		ext.float64Ptr = val
 	}
 
 	// compile dynamic style: whole style > individual FG/BG

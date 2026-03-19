@@ -3,7 +3,7 @@
 ## App
 
 ```go
-app, err := NewApp()
+app := NewApp()
 ```
 
 ### Methods

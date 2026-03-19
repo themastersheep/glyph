@@ -13,10 +13,7 @@ func main() {
 	items := []string{"Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig", "Grape"}
 	status := "Press 'g' to enter jump mode, 'q' to quit"
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	// build UI with Jump-wrapped items
 	children := make([]any, 0, len(items)+4)

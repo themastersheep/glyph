@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"time"
 
 	. "github.com/kungfusheep/glyph"
@@ -16,10 +15,7 @@ func main() {
 
 	green := Style{FG: Green}
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	app.SetView(
 		VBox.Border(BorderDouble).BorderFG(Green).Title("MFD-1").FitContent().CascadeStyle(&green)(

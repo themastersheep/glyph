@@ -39,11 +39,7 @@ func main() {
 
 	ui := buildUI(state)
 
-	app, err := NewApp()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	app := NewApp()
 	app.SetView(ui)
 	app.Handle("q", func(_ riffkey.Match) {
 		app.Stop()

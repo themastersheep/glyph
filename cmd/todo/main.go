@@ -12,7 +12,7 @@ func main() {
 	todos := []Todo{{"Learn glyph", true}, {"Build something", false}}
 	var input InputState
 
-	app, _ := NewApp()
+	app := NewApp()
 	app.SetView(
 		VBox.Border(BorderRounded).Title("Todo").FitContent().Gap(1)(
 			CheckList(&todos).

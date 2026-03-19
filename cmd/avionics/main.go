@@ -174,10 +174,7 @@ func main() {
 	modes := []string{"NAV", "WPN", "DFNS"}
 	frame := 0
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 	top := &Style{Transform: TransformUppercase}
 
 	app.SetView(

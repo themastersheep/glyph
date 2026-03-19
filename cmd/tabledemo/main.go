@@ -25,10 +25,7 @@ type Person struct {
 }
 
 func main() {
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	stocks := []Stock{
 		{"AAPL", "Apple Inc", 178.92, 2.34, 52_000_000, true},

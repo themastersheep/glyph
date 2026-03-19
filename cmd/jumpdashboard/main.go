@@ -138,10 +138,7 @@ func main() {
 		return Jump(content, func() { status = label })
 	}
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	app.SetView(VBox(
 		HBox(Text("Dashboard").FG(Cyan).Bold(), Space(), Text(&status).FG(Yellow)),

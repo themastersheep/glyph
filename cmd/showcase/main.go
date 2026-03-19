@@ -62,10 +62,7 @@ func main() {
 		},
 	}
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	app.SetView(
 		VBox(

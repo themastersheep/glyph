@@ -104,12 +104,8 @@ type App struct {
 }
 
 // NewApp creates a new TUI application (fullscreen, alternate buffer).
-func NewApp() (*App, error) {
-	screen, err := NewScreen(nil)
-	if err != nil {
-		return nil, err
-	}
-
+func NewApp() *App {
+	screen := NewScreen(nil)
 	router := riffkey.NewRouter()
 	input := riffkey.NewInput(router)
 	reader := riffkey.NewReader(os.Stdin).SetUTF8(true)
@@ -124,19 +120,16 @@ func NewApp() (*App, error) {
 		jumpStyle:  DefaultJumpStyle,
 	}
 
-	return app, nil
+	return app
 }
 
 // NewInlineApp creates a new inline TUI application.
 // Inline apps render at the current cursor position without taking over the screen.
 // Use this for progress bars, selection menus, spinners, etc.
-func NewInlineApp() (*App, error) {
-	app, err := NewApp()
-	if err != nil {
-		return nil, err
-	}
+func NewInlineApp() *App {
+	app := NewApp()
 	app.inline = true
-	return app, nil
+	return app
 }
 
 // Ref provides access to the component for external references.
@@ -1084,7 +1077,6 @@ func (a *App) EnterJumpMode() {
 
 	// Build label lookup
 	for _, target := range a.jumpMode.Targets {
-		target := target // capture for closure
 		jumpRouter.Handle(target.Label, func(_ riffkey.Match) {
 			if target.OnSelect != nil {
 				target.OnSelect()

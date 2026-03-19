@@ -35,10 +35,7 @@ func main() {
 	showModal := true
 	status := "Press 'm' to toggle modal"
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	list := List(&commands).
 		Selection(&selected).

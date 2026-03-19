@@ -20,7 +20,7 @@ func main() {
 
 	pr, pw := io.Pipe()
 
-	app, _ := NewApp()
+	app := NewApp()
 	app.SetView(
 		VBox(
 			HBox.Gap(1)(

@@ -1627,10 +1627,7 @@ func main() {
 		macros:         make(map[rune]riffkey.Macro),
 	}
 
-	app, err := glyph.NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := glyph.NewApp()
 	ed.app = app
 	ed.harvestCommands() // Build command list for completion
 	ed.refreshGitSigns() // Load initial git diff state

@@ -33,10 +33,7 @@ func main() {
 	themeName := themes[themeIdx].name
 	rootStyle := Style{FG: currentTheme.Base.FG, Fill: themes[themeIdx].fill}
 
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	// Build the UI using the functional API
 	app.SetView(

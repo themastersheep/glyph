@@ -31,7 +31,7 @@ type homepagePkg struct {
 
 // homepage: section 01, first app
 func TestHomepage_firstApp(t *testing.T) {
-	app, _ := NewApp()
+	app := NewApp()
 
 	app.SetView(
 		VBox(
@@ -63,7 +63,7 @@ func TestHomepage_composeLayouts(t *testing.T) {
 
 // homepage: section 02, stream anything
 func TestHomepage_streamAnything(t *testing.T) {
-	app, _ := NewApp()
+	app := NewApp()
 
 	cmd := exec.Command("go", "test", "./...")
 	stdout, _ := cmd.StdoutPipe()

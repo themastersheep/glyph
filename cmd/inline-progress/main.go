@@ -24,10 +24,7 @@ func main() {
 		{"sha256:ef0123", 0, "pulling"},
 	}
 
-	app, err := NewInlineApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewInlineApp()
 
 	app.SetView(VBox(
 		ForEach(&layers, func(l *layer) any {

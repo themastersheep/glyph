@@ -125,10 +125,7 @@ func formatVolume(v int) string {
 }
 
 func main() {
-	app, err := NewApp()
-	if err != nil {
-		log.Fatal(err)
-	}
+	app := NewApp()
 
 	// Initialize markets
 	markets := []Market{
