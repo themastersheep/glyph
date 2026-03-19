@@ -4,7 +4,7 @@ Declarative terminal UI framework for Go. **[useglyph.sh](https://useglyph.sh)**
 
 ![hero](./assets/hero.gif)
 
-```go
+```golang
 VBox.Border(BorderDouble).Title("SYS").FitContent()(
     If(&online).
         Then(Text("● ONLINE")).
