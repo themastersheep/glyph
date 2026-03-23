@@ -54,25 +54,26 @@ func Define(fn func() any) any {
 // ============================================================================
 
 type VBoxC struct {
-	fill         Color
-	inheritStyle *Style
-	gap          int8
-	border       BorderStyle
-	borderFG     *Color
-	borderBG     *Color
-	title        string
-	width        int16
-	height       int16
-	percentWidth float32
-	flexGrow     float32
-	fitContent   bool
-	margin       [4]int16 // top, right, bottom, left
-	nodeRef         *NodeRef
-	widthPtr        *int16
-	heightPtr       *int16
-	gapPtr          *int8
-	percentWidthPtr *float32
-	flexGrowPtr     *float32
+	fill             Color
+	inheritStyle     *Style
+	gap              int8
+	border           BorderStyle
+	borderFG         *Color
+	borderBG         *Color
+	title            string
+	width            int16
+	height           int16
+	percentWidth     float32
+	flexGrow         float32
+	fitContent       bool
+	margin           [4]int16 // top, right, bottom, left
+	padding          [4]int16 // top, right, bottom, left
+	nodeRef          *NodeRef
+	widthPtr         *int16
+	heightPtr        *int16
+	gapPtr           *int8
+	percentWidthPtr  *float32
+	flexGrowPtr      *float32
 	heightCond       any
 	widthCond        any
 	gapCond          any
@@ -84,7 +85,7 @@ type VBoxC struct {
 	localStylePtr    *Style
 	localStyleCond   any
 	opacity          dynFloat64
-	children        []any
+	children         []any
 }
 
 type VBoxFn func(children ...any) VBoxC
@@ -159,7 +160,7 @@ func (f VBoxFn) Gap(g any) VBoxFn {
 		case conditionNode:
 			v.gapCond = val
 		case tweenNode:
-						v.gapCond = val
+			v.gapCond = val
 		}
 		return v
 	}
@@ -220,7 +221,7 @@ func (f VBoxFn) Width(w any) VBoxFn {
 		case conditionNode:
 			v.widthCond = val
 		case tweenNode:
-						v.widthCond = val
+			v.widthCond = val
 		}
 		return v
 	}
@@ -240,7 +241,7 @@ func (f VBoxFn) Height(h any) VBoxFn {
 		case conditionNode:
 			v.heightCond = val
 		case tweenNode:
-						v.heightCond = val
+			v.heightCond = val
 		}
 		return v
 	}
@@ -270,7 +271,7 @@ func (f VBoxFn) WidthPct(pct any) VBoxFn {
 		case conditionNode:
 			v.percentWidthCond = val
 		case tweenNode:
-						v.percentWidthCond = val
+			v.percentWidthCond = val
 		}
 		return v
 	}
@@ -292,7 +293,7 @@ func (f VBoxFn) Grow(g any) VBoxFn {
 		case conditionNode:
 			v.flexGrowCond = val
 		case tweenNode:
-						v.flexGrowCond = val
+			v.flexGrowCond = val
 		}
 		return v
 	}
@@ -334,6 +335,33 @@ func (f VBoxFn) MarginTRBL(top, right, bottom, left int16) VBoxFn {
 	}
 }
 
+// Padding sets uniform padding on all sides.
+func (f VBoxFn) Padding(all int16) VBoxFn {
+	return func(children ...any) VBoxC {
+		v := f(children...)
+		v.padding = [4]int16{all, all, all, all}
+		return v
+	}
+}
+
+// PaddingVH sets vertical and horizontal padding.
+func (f VBoxFn) PaddingVH(vertical, horizontal int16) VBoxFn {
+	return func(children ...any) VBoxC {
+		v := f(children...)
+		v.padding = [4]int16{vertical, horizontal, vertical, horizontal}
+		return v
+	}
+}
+
+// PaddingTRBL sets individual padding for top, right, bottom, left.
+func (f VBoxFn) PaddingTRBL(top, right, bottom, left int16) VBoxFn {
+	return func(children ...any) VBoxC {
+		v := f(children...)
+		v.padding = [4]int16{top, right, bottom, left}
+		return v
+	}
+}
+
 // NodeRef attaches a reference that is populated with this node's rendered
 // screen bounds each frame. Use it in effects or anywhere that needs to know
 // where a node actually rendered.
@@ -358,25 +386,26 @@ var VBox VBoxFn = func(children ...any) VBoxC {
 // ============================================================================
 
 type HBoxC struct {
-	fill         Color
-	inheritStyle *Style
-	gap          int8
-	border       BorderStyle
-	borderFG     *Color
-	borderBG     *Color
-	title        string
-	width        int16
-	height       int16
-	percentWidth float32
-	flexGrow     float32
-	fitContent   bool
-	margin       [4]int16 // top, right, bottom, left
-	nodeRef         *NodeRef
-	widthPtr        *int16
-	heightPtr       *int16
-	gapPtr          *int8
-	percentWidthPtr *float32
-	flexGrowPtr     *float32
+	fill             Color
+	inheritStyle     *Style
+	gap              int8
+	border           BorderStyle
+	borderFG         *Color
+	borderBG         *Color
+	title            string
+	width            int16
+	height           int16
+	percentWidth     float32
+	flexGrow         float32
+	fitContent       bool
+	margin           [4]int16 // top, right, bottom, left
+	padding          [4]int16 // top, right, bottom, left
+	nodeRef          *NodeRef
+	widthPtr         *int16
+	heightPtr        *int16
+	gapPtr           *int8
+	percentWidthPtr  *float32
+	flexGrowPtr      *float32
 	heightCond       any
 	widthCond        any
 	gapCond          any
@@ -388,7 +417,7 @@ type HBoxC struct {
 	localStylePtr    *Style
 	localStyleCond   any
 	opacity          dynFloat64
-	children        []any
+	children         []any
 }
 
 type HBoxFn func(children ...any) HBoxC
@@ -463,7 +492,7 @@ func (f HBoxFn) Gap(g any) HBoxFn {
 		case conditionNode:
 			h.gapCond = val
 		case tweenNode:
-						h.gapCond = val
+			h.gapCond = val
 		}
 		return h
 	}
@@ -524,7 +553,7 @@ func (f HBoxFn) Width(w any) HBoxFn {
 		case conditionNode:
 			h.widthCond = val
 		case tweenNode:
-						h.widthCond = val
+			h.widthCond = val
 		}
 		return h
 	}
@@ -544,7 +573,7 @@ func (f HBoxFn) Height(h any) HBoxFn {
 		case conditionNode:
 			c.heightCond = val
 		case tweenNode:
-						c.heightCond = val
+			c.heightCond = val
 		}
 		return c
 	}
@@ -574,7 +603,7 @@ func (f HBoxFn) WidthPct(pct any) HBoxFn {
 		case conditionNode:
 			h.percentWidthCond = val
 		case tweenNode:
-						h.percentWidthCond = val
+			h.percentWidthCond = val
 		}
 		return h
 	}
@@ -596,7 +625,7 @@ func (f HBoxFn) Grow(g any) HBoxFn {
 		case conditionNode:
 			h.flexGrowCond = val
 		case tweenNode:
-						h.flexGrowCond = val
+			h.flexGrowCond = val
 		}
 		return h
 	}
@@ -634,6 +663,33 @@ func (f HBoxFn) MarginTRBL(top, right, bottom, left int16) HBoxFn {
 	return func(children ...any) HBoxC {
 		h := f(children...)
 		h.margin = [4]int16{top, right, bottom, left}
+		return h
+	}
+}
+
+// Padding sets uniform padding on all sides.
+func (f HBoxFn) Padding(all int16) HBoxFn {
+	return func(children ...any) HBoxC {
+		h := f(children...)
+		h.padding = [4]int16{all, all, all, all}
+		return h
+	}
+}
+
+// PaddingVH sets vertical and horizontal padding.
+func (f HBoxFn) PaddingVH(vertical, horizontal int16) HBoxFn {
+	return func(children ...any) HBoxC {
+		h := f(children...)
+		h.padding = [4]int16{vertical, horizontal, vertical, horizontal}
+		return h
+	}
+}
+
+// PaddingTRBL sets individual padding for top, right, bottom, left.
+func (f HBoxFn) PaddingTRBL(top, right, bottom, left int16) HBoxFn {
+	return func(children ...any) HBoxC {
+		h := f(children...)
+		h.padding = [4]int16{top, right, bottom, left}
 		return h
 	}
 }
@@ -809,8 +865,8 @@ func (t TextC) Width(w any) TextC {
 		t.widthPtr = val
 	case conditionNode:
 		t.widthCond = val
-		case tweenNode:
-					t.widthCond = val
+	case tweenNode:
+		t.widthCond = val
 	}
 	return t
 }
@@ -918,8 +974,8 @@ func (s SpacerC) Width(w any) SpacerC {
 		s.widthPtr = val
 	case conditionNode:
 		s.widthCond = val
-		case tweenNode:
-					s.widthCond = val
+	case tweenNode:
+		s.widthCond = val
 	}
 	return s
 }
@@ -935,8 +991,8 @@ func (s SpacerC) Height(h any) SpacerC {
 		s.heightPtr = val
 	case conditionNode:
 		s.heightCond = val
-		case tweenNode:
-					s.heightCond = val
+	case tweenNode:
+		s.heightCond = val
 	}
 	return s
 }
@@ -966,8 +1022,8 @@ func (s SpacerC) Grow(g any) SpacerC {
 		s.flexGrowPtr = val
 	case conditionNode:
 		s.flexGrowCond = val
-		case tweenNode:
-					s.flexGrowCond = val
+	case tweenNode:
+		s.flexGrowCond = val
 	}
 	return s
 }
@@ -1154,8 +1210,8 @@ func (v VRuleC) Height(h any) VRuleC {
 		v.heightPtr = val
 	case conditionNode:
 		v.heightCond = val
-		case tweenNode:
-					v.heightCond = val
+	case tweenNode:
+		v.heightCond = val
 	}
 	return v
 }
@@ -1203,8 +1259,8 @@ func (p ProgressC) Width(w any) ProgressC {
 		p.widthPtr = val
 	case conditionNode:
 		p.widthCond = val
-		case tweenNode:
-					p.widthCond = val
+	case tweenNode:
+		p.widthCond = val
 	}
 	return p
 }
@@ -1391,8 +1447,8 @@ func (l LeaderC) Width(w any) LeaderC {
 		l.widthPtr = val
 	case conditionNode:
 		l.widthCond = val
-		case tweenNode:
-					l.widthCond = val
+	case tweenNode:
+		l.widthCond = val
 	}
 	return l
 }
@@ -1524,8 +1580,8 @@ func (s SparklineC) Width(w any) SparklineC {
 		s.widthPtr = val
 	case conditionNode:
 		s.widthCond = val
-		case tweenNode:
-					s.widthCond = val
+	case tweenNode:
+		s.widthCond = val
 	}
 	return s
 }
@@ -1543,8 +1599,8 @@ func (s SparklineC) Height(h any) SparklineC {
 		s.heightPtr = val
 	case conditionNode:
 		s.heightCond = val
-		case tweenNode:
-					s.heightCond = val
+	case tweenNode:
+		s.heightCond = val
 	}
 	return s
 }
@@ -1628,6 +1684,7 @@ type JumpC struct {
 	onSelect func()
 	style    Style
 	margin   [4]int16
+	padding  [4]int16
 }
 
 // Jump wraps a child component as a jump target.
@@ -1651,6 +1708,15 @@ func (j JumpC) MarginVH(v, h int16) JumpC { j.margin = [4]int16{v, h, v, h}; ret
 // MarginTRBL sets individual margins for top, right, bottom, left.
 func (j JumpC) MarginTRBL(a, b, c, d int16) JumpC { j.margin = [4]int16{a, b, c, d}; return j }
 
+// Padding sets uniform padding on all sides.
+func (j JumpC) Padding(all int16) JumpC { j.padding = [4]int16{all, all, all, all}; return j }
+
+// PaddingVH sets vertical and horizontal padding.
+func (j JumpC) PaddingVH(v, h int16) JumpC { j.padding = [4]int16{v, h, v, h}; return j }
+
+// PaddingTRBL sets individual padding for top, right, bottom, left.
+func (j JumpC) PaddingTRBL(a, b, c, d int16) JumpC { j.padding = [4]int16{a, b, c, d}; return j }
+
 // ============================================================================
 // LayerView - Display a pre-rendered layer
 // ============================================================================
@@ -1661,6 +1727,7 @@ type LayerViewC struct {
 	viewWidth    int16
 	flexGrow     float32
 	margin       [4]int16
+	padding      [4]int16
 	flexGrowPtr  *float32
 	flexGrowCond any
 }
@@ -1696,8 +1763,8 @@ func (l LayerViewC) Grow(g any) LayerViewC {
 		l.flexGrowPtr = val
 	case conditionNode:
 		l.flexGrowCond = val
-		case tweenNode:
-					l.flexGrowCond = val
+	case tweenNode:
+		l.flexGrowCond = val
 	}
 	return l
 }
@@ -1711,6 +1778,21 @@ func (l LayerViewC) MarginVH(v, h int16) LayerViewC { l.margin = [4]int16{v, h, 
 // MarginTRBL sets individual margins for top, right, bottom, left.
 func (l LayerViewC) MarginTRBL(a, b, c, d int16) LayerViewC {
 	l.margin = [4]int16{a, b, c, d}
+	return l
+}
+
+// Padding sets uniform padding on all sides.
+func (l LayerViewC) Padding(all int16) LayerViewC {
+	l.padding = [4]int16{all, all, all, all}
+	return l
+}
+
+// PaddingVH sets vertical and horizontal padding.
+func (l LayerViewC) PaddingVH(v, h int16) LayerViewC { l.padding = [4]int16{v, h, v, h}; return l }
+
+// PaddingTRBL sets individual padding for top, right, bottom, left.
+func (l LayerViewC) PaddingTRBL(a, b, c, d int16) LayerViewC {
+	l.padding = [4]int16{a, b, c, d}
 	return l
 }
 
@@ -2118,8 +2200,8 @@ func (t TabsC) Gap(g any) TabsC {
 		t.gapPtr = val
 	case conditionNode:
 		t.gapCond = val
-		case tweenNode:
-					t.gapCond = val
+	case tweenNode:
+		t.gapCond = val
 	}
 	return t
 }
@@ -2455,8 +2537,8 @@ func (r *RadioC) Gap(g any) *RadioC {
 		r.gapPtr = val
 	case conditionNode:
 		r.gapCond = val
-		case tweenNode:
-					r.gapCond = val
+	case tweenNode:
+		r.gapCond = val
 	}
 	return r
 }
@@ -2639,8 +2721,8 @@ func (c *CheckListC[T]) Gap(g any) *CheckListC[T] {
 		c.gapPtr = val
 	case conditionNode:
 		c.gapCond = val
-		case tweenNode:
-					c.gapCond = val
+	case tweenNode:
+		c.gapCond = val
 	}
 	return c
 }
@@ -2921,8 +3003,8 @@ func (i *InputC) Width(w any) *InputC {
 		i.widthPtr = val
 	case conditionNode:
 		i.widthCond = val
-		case tweenNode:
-					i.widthCond = val
+	case tweenNode:
+		i.widthCond = val
 	}
 	return i
 }

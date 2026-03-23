@@ -227,6 +227,7 @@ type Op struct {
 	LocalStyle   *Style      // style for this container only (not inherited)
 	Fill         Color       // container fill color (fills entire area)
 	Margin       [4]int16    // outer margin: top, right, bottom, left
+	Padding      [4]int16    // inner padding: top, right, bottom, left
 	NodeRef      *NodeRef    // if set, populated with rendered screen bounds each frame
 
 	// kind-specific data — type-assert based on Kind.
@@ -1433,8 +1434,10 @@ type opScreenEffect struct {
 }
 
 // margin helpers (avoid repeating [0]/[1]/[2]/[3] everywhere)
-func (op *Op) marginH() int16 { return op.Margin[1] + op.Margin[3] } // left + right
-func (op *Op) marginV() int16 { return op.Margin[0] + op.Margin[2] } // top + bottom
+func (op *Op) marginH() int16  { return op.Margin[1] + op.Margin[3] }  // left + right
+func (op *Op) marginV() int16  { return op.Margin[0] + op.Margin[2] }  // top + bottom
+func (op *Op) paddingH() int16 { return op.Padding[1] + op.Padding[3] } // left + right
+func (op *Op) paddingV() int16 { return op.Padding[0] + op.Padding[2] } // top + bottom
 
 // OpKind identifies the type of a compiled template instruction.
 type OpKind uint8
@@ -2045,7 +2048,7 @@ func (t *Template) compileOverlay(v OverlayNode, parent int16, depth int) int16 
 	}, depth)
 }
 
-func (t *Template) compileContainer(children []any, gap int8, isRow bool, f flex, border BorderStyle, title string, borderFG, borderBG *Color, fill Color, inheritStyle *Style, margin [4]int16, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
+func (t *Template) compileContainer(children []any, gap int8, isRow bool, f flex, border BorderStyle, title string, borderFG, borderBG *Color, fill Color, inheritStyle *Style, margin [4]int16, padding [4]int16, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
 	op := Op{
 		Kind:         OpContainer,
 		Parent:       parent,
@@ -2063,6 +2066,7 @@ func (t *Template) compileContainer(children []any, gap int8, isRow bool, f flex
 		Fill:         fill,
 		CascadeStyle: inheritStyle,
 		Margin:       margin,
+		Padding:      padding,
 	}
 
 	if f.widthPtr != nil || f.heightPtr != nil || f.flexGrowPtr != nil || f.percentWidthPtr != nil {
@@ -2315,6 +2319,7 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 		v.fill,
 		v.inheritStyle,
 		v.margin,
+		v.padding,
 		parent,
 		depth,
 		elemBase,
@@ -2396,6 +2401,7 @@ func (t *Template) compileHBoxC(v HBoxC, parent int16, depth int, elemBase unsaf
 		v.fill,
 		v.inheritStyle,
 		v.margin,
+		v.padding,
 		parent,
 		depth,
 		elemBase,
@@ -2768,6 +2774,7 @@ func (t *Template) compileJumpC(v JumpC, parent int16, depth int, elemBase unsaf
 		Parent:     parent,
 		ChildStart: int16(len(t.ops)),
 		Margin:     v.margin,
+		Padding:    v.padding,
 		Ext:        ext,
 	}, depth)
 
@@ -2786,6 +2793,7 @@ func (t *Template) compileLayerViewC(v LayerViewC, parent int16, depth int) int1
 		Parent:   parent,
 		FlexGrow: v.flexGrow,
 		Margin:   v.margin,
+		Padding:  v.padding,
 		Ext:      ext,
 	}, depth)
 	if v.flexGrowCond != nil {
@@ -3404,8 +3412,8 @@ func (t *Template) computeIntrinsicWidth(idx int16) int16 {
 			intrinsicW += 2
 		}
 
-		// Add margin
-		intrinsicW += op.marginH()
+		// Add margin + padding
+		intrinsicW += op.marginH() + op.paddingH()
 
 		return intrinsicW
 	}
@@ -3621,8 +3629,8 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 // For Rows: two-pass (non-flex first, then flex distribution).
 // For Cols: children fill available width.
 func (t *Template) distributeWidthsToChildren(idx int16, op *Op, geom *Geom, elemBase unsafe.Pointer) {
-	// Calculate content width (subtract margin + border)
-	contentW := geom.W - op.marginH()
+	// Calculate content width (subtract margin + padding + border)
+	contentW := geom.W - op.marginH() - op.paddingH()
 	if op.Border.Horizontal != 0 {
 		contentW -= 2
 	}
@@ -4236,15 +4244,17 @@ func (t *Template) layout(_ int16) {
 
 // layoutContainer positions children and computes container height.
 func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
-	// Content area offset for margin + border
+	// Content area offset for margin + border + padding
 	contentOffX := op.Margin[3] // left margin
 	contentOffY := op.Margin[0] // top margin
 	if op.Border.Horizontal != 0 {
 		contentOffX += 1
 		contentOffY += 1
 	}
+	contentOffX += op.Padding[3] // left padding
+	contentOffY += op.Padding[0] // top padding
 
-	availW := geom.W - op.marginH()
+	availW := geom.W - op.marginH() - op.paddingH()
 	if op.Border.Horizontal != 0 {
 		availW -= 2
 	}
@@ -4393,7 +4403,7 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 		if op.Border.Horizontal != 0 {
 			geom.H += 2
 		}
-		geom.H += op.marginV()
+		geom.H += op.marginV() + op.paddingV()
 	} else {
 		// Vertical layout
 		cursor := int16(0)
@@ -4491,7 +4501,7 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 		if op.Border.Horizontal != 0 {
 			geom.H += 2
 		}
-		geom.H += op.marginV()
+		geom.H += op.marginV() + op.paddingV()
 	}
 
 	// Store content height before any override (for flex distribution)
@@ -4547,7 +4557,7 @@ func (t *Template) distributeFlexGrow(rootH int16) {
 // This enables VBox children inside an HBox to use flex for vertical distribution.
 func (t *Template) stretchRowChildren(idx int16, op *Op) {
 	geom := &t.geom[idx]
-	availH := geom.H - op.marginV()
+	availH := geom.H - op.marginV() - op.paddingV()
 	if op.Border.Horizontal != 0 {
 		availH -= 2
 	}
@@ -4610,19 +4620,19 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 	var availH int16
 	if op.flexGrow() > 0 && geom.H > 0 {
 		// This container is a flex child - use its own height (already computed)
-		availH = geom.H - op.marginV()
+		availH = geom.H - op.marginV() - op.paddingV()
 		if op.Border.Horizontal != 0 {
 			availH -= 2 // Subtract own border from available content space
 		}
 	} else if op.Parent >= 0 {
 		parentGeom := &t.geom[op.Parent]
 		parentOp := &t.ops[op.Parent]
-		availH = parentGeom.H - parentOp.marginV()
+		availH = parentGeom.H - parentOp.marginV() - parentOp.paddingV()
 		if parentOp.Border.Horizontal != 0 {
 			availH -= 2 // Account for parent border
 		}
 	} else {
-		availH = rootH - op.marginV()
+		availH = rootH - op.marginV() - op.paddingV()
 		if op.Border.Horizontal != 0 {
 			availH -= 2 // subtract own border from available content space
 		}
@@ -4630,7 +4640,7 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 
 	// If this container has explicit height, use that
 	if h := op.height(); h > 0 {
-		availH = h - op.marginV()
+		availH = h - op.marginV() - op.paddingV()
 		if op.Border.Horizontal != 0 {
 			availH -= 2
 		}
@@ -6215,7 +6225,12 @@ func (t *Template) renderTextInput(buf *Buffer, op *Op, geom *Geom, absX, absY i
 		}
 		// Draw cursor at start if focused
 		if showCursor {
-			buf.Set(int(absX), int(absY), Cell{Rune: ' ', Style: cursorStyle})
+			// use first placeholder character under cursor so it remains visible
+			cursorRune := ' '
+			if ext.placeholder != "" {
+				cursorRune = []rune(ext.placeholder)[0]
+			}
+			buf.Set(int(absX), int(absY), Cell{Rune: cursorRune, Style: cursorStyle})
 		}
 		return
 	}
