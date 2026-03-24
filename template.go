@@ -100,8 +100,10 @@ type Template struct {
 	// App reference for jump mode coordination
 	app *App
 
-	// Row background for SelectionList selected rows (merged with cell styles)
-	rowBG Color
+	// row styling for SelectionList selected rows (merged with cell styles)
+	rowBG   Color
+	rowFG   Color
+	rowAttr Attribute
 
 	// Style inheritance - current inherited style during render
 	inheritedStyle *Style
@@ -5518,12 +5520,16 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 	contentW := geom.W - op.marginH()
 	contentH := geom.H - op.marginV()
 
-	// Helper to merge row background with text style (also applies inherited style)
+	// merge row selection style with text style (also applies inherited style)
 	mergeStyle := func(s Style) Style {
-		s = sub.effectiveStyle(s) // apply inherited style first
+		s = sub.effectiveStyle(s)
 		if sub.rowBG.Mode != 0 && s.BG.Mode == 0 {
 			s.BG = sub.rowBG
 		}
+		if sub.rowFG.Mode != 0 && s.FG.Mode == 0 {
+			s.FG = sub.rowFG
+		}
+		s.Attr = s.Attr | sub.rowAttr
 		return s
 	}
 
@@ -5945,15 +5951,15 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 	for i := startIdx; i < endIdx; i++ {
 		isSelected := i == selectedIdx
 
-		// Fill background for row
-		var rowBG Color
-		if isSelected && selectedStyle.BG.Mode != 0 {
-			rowBG = selectedStyle.BG
+		// fill row with selection style
+		var rowStyle Style
+		if isSelected {
+			rowStyle = selectedStyle
 		} else if defaultStyle.BG.Mode != 0 {
-			rowBG = defaultStyle.BG
+			rowStyle.BG = defaultStyle.BG
 		}
-		if rowBG.Mode != 0 {
-			buf.FillRect(int(absX), y, int(maxW), 1, Cell{Rune: ' ', Style: Style{BG: rowBG}})
+		if rowStyle.BG.Mode != 0 || rowStyle.Attr != 0 {
+			buf.FillRect(int(absX), y, int(maxW), 1, Cell{Rune: ' ', Style: rowStyle})
 		}
 
 		// Determine marker text and style
@@ -5989,13 +5995,22 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 				ext.iterTmpl.elemBase = elemPtr
 				ext.iterTmpl.distributeWidths(contentW, elemPtr)
 				ext.iterTmpl.layout(0)
-				// Set row background (used by renderSubOp)
-				if isSelected && selectedStyle.BG.Mode != 0 {
+				// set row style for selection (used by renderSubOp mergeStyle)
+				if isSelected {
 					ext.iterTmpl.rowBG = selectedStyle.BG
+					ext.iterTmpl.rowFG = selectedStyle.FG
+					ext.iterTmpl.rowAttr = selectedStyle.Attr
+					if ext.iterTmpl.rowBG.Mode == 0 && defaultStyle.BG.Mode != 0 {
+						ext.iterTmpl.rowBG = defaultStyle.BG
+					}
 				} else if defaultStyle.BG.Mode != 0 {
 					ext.iterTmpl.rowBG = defaultStyle.BG
+					ext.iterTmpl.rowFG = Color{}
+					ext.iterTmpl.rowAttr = 0
 				} else {
 					ext.iterTmpl.rowBG = Color{}
+					ext.iterTmpl.rowFG = Color{}
+					ext.iterTmpl.rowAttr = 0
 				}
 				t.renderSubTemplate(buf, ext.iterTmpl, contentX, int16(y), contentW, elemPtr)
 			} else {
@@ -6009,12 +6024,16 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 					if ext.stylePtr != nil {
 						textStyle = *ext.stylePtr
 					}
-					if textStyle.BG.Mode == 0 {
-						if isSelected && selectedStyle.BG.Mode != 0 {
+					if isSelected {
+						if textStyle.BG.Mode == 0 && selectedStyle.BG.Mode != 0 {
 							textStyle.BG = selectedStyle.BG
-						} else if defaultStyle.BG.Mode != 0 {
-							textStyle.BG = defaultStyle.BG
 						}
+						if textStyle.FG.Mode == 0 && selectedStyle.FG.Mode != 0 {
+							textStyle.FG = selectedStyle.FG
+						}
+						textStyle.Attr = textStyle.Attr | selectedStyle.Attr
+					} else if textStyle.BG.Mode == 0 && defaultStyle.BG.Mode != 0 {
+						textStyle.BG = defaultStyle.BG
 					}
 					effStyle := t.effectiveStyle(textStyle)
 					raw := ext.resolve(elemPtr)
