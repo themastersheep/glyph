@@ -485,6 +485,8 @@ func (t *Template) compileDynColor(v any) *Color {
 		return c
 	case conditionNode:
 		return t.compileCondColor(c)
+	case switchNodeInterface:
+		return t.compileSwitchColor(c)
 	case tweenNode:
 		return t.compileTweenColor(c)
 	}
@@ -564,6 +566,24 @@ func (t *Template) compileCondStyle(cond conditionNode) *Style {
 			*storage = anyToStyle(thenVal)
 		} else {
 			*storage = anyToStyle(elseVal)
+		}
+	}
+	eval()
+	root.evals = append(root.evals, eval)
+	return storage
+}
+
+func (t *Template) compileSwitchColor(sw switchNodeInterface) *Color {
+	root := t.evalRoot()
+	storage := new(Color)
+	cases := sw.getCaseNodes()
+	def := sw.getDefaultNode()
+	eval := func() {
+		idx := sw.getMatchIndex()
+		if idx >= 0 && idx < len(cases) {
+			*storage = anyToColor(cases[idx])
+		} else {
+			*storage = anyToColor(def)
 		}
 	}
 	eval()
@@ -1146,10 +1166,11 @@ func (c *opIf) evalStatic() bool {
 }
 
 type opForEach struct {
-	iterTmpl *Template
-	slicePtr unsafe.Pointer
-	elemSize uintptr
-	geoms    []Geom // per-item geometry, reused across frames
+	iterTmpl  *Template
+	slicePtr  unsafe.Pointer
+	elemSize  uintptr
+	elemIsPtr bool   // true when slice elements are pointers (e.g. []*T)
+	geoms     []Geom // per-item geometry, reused across frames
 }
 
 type opSwitch struct {
@@ -1841,6 +1862,7 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 	}
 	elemType := sliceType.Elem()
 	sliceElemSize := elemType.Size()
+	elemIsPtr := elemType.Kind() == reflect.Ptr
 	slicePtr := unsafe.Pointer(sliceRV.Pointer())
 
 	// Default marker
@@ -1858,12 +1880,23 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 
 		var dummyElem reflect.Value
 		var dummyBase unsafe.Pointer
+		var compileSize uintptr
 		if takesPtr {
 			dummyElem = reflect.New(elemType)
 			dummyBase = unsafe.Pointer(dummyElem.Pointer())
 		} else {
 			dummyElem = reflect.New(elemType).Elem()
 			dummyBase = unsafe.Pointer(dummyElem.Addr().Pointer())
+		}
+
+		if elemIsPtr && takesPtr {
+			derefType := elemType.Elem()
+			dummy := reflect.New(derefType)
+			dummyBase = unsafe.Pointer(dummy.Pointer())
+			compileSize = derefType.Size()
+			dummyElem.Elem().Set(dummy)
+		} else {
+			compileSize = sliceElemSize
 		}
 
 		// Call render to get template structure
@@ -1878,7 +1911,7 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 		for i := range iterTmpl.byDepth {
 			iterTmpl.byDepth[i] = make([]int16, 0, 4)
 		}
-		iterTmpl.compile(templateResult, -1, 0, dummyBase, sliceElemSize)
+		iterTmpl.compile(templateResult, -1, 0, dummyBase, compileSize)
 		if iterTmpl.maxDepth >= 0 {
 			iterTmpl.byDepth = iterTmpl.byDepth[:iterTmpl.maxDepth+1]
 		}
@@ -1894,9 +1927,10 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 	}
 
 	ext.opForEach = opForEach{
-		iterTmpl: iterTmpl,
-		slicePtr: slicePtr,
-		elemSize: sliceElemSize,
+		iterTmpl:  iterTmpl,
+		slicePtr:  slicePtr,
+		elemSize:  sliceElemSize,
+		elemIsPtr: elemIsPtr,
 	}
 	op := Op{
 		Kind:   OpSelectionList,
@@ -2244,6 +2278,7 @@ func (t *Template) compileForEach(items any, render any, parent int16, depth int
 	}
 	elemType := sliceType.Elem()
 	elemSize := elemType.Size()
+	elemIsPtr := elemType.Kind() == reflect.Ptr
 	slicePtr := unsafe.Pointer(sliceRV.Pointer())
 
 	// Create dummy element for template compilation
@@ -2252,12 +2287,26 @@ func (t *Template) compileForEach(items any, render any, parent int16, depth int
 
 	var dummyElem reflect.Value
 	var dummyBase unsafe.Pointer
+	var compileSize uintptr
 	if takesPtr {
 		dummyElem = reflect.New(elemType)
 		dummyBase = unsafe.Pointer(dummyElem.Pointer())
 	} else {
 		dummyElem = reflect.New(elemType).Elem()
 		dummyBase = unsafe.Pointer(dummyElem.Addr().Pointer())
+	}
+
+	// when elements are pointers, the render callback dereferences them
+	// (e.g. func(pp **T) { fn(*pp) }). compile against the pointed-to
+	// struct so offset calculations work for fields within the struct.
+	if elemIsPtr && takesPtr {
+		derefType := elemType.Elem()
+		dummy := reflect.New(derefType)
+		dummyBase = unsafe.Pointer(dummy.Pointer())
+		compileSize = derefType.Size()
+		dummyElem.Elem().Set(dummy)
+	} else {
+		compileSize = elemSize
 	}
 
 	// Call render to get template structure
@@ -2272,7 +2321,7 @@ func (t *Template) compileForEach(items any, render any, parent int16, depth int
 	for i := range iterTmpl.byDepth {
 		iterTmpl.byDepth[i] = make([]int16, 0, 4)
 	}
-	iterTmpl.compile(templateResult, -1, 0, dummyBase, elemSize)
+	iterTmpl.compile(templateResult, -1, 0, dummyBase, compileSize)
 	if iterTmpl.maxDepth >= 0 {
 		iterTmpl.byDepth = iterTmpl.byDepth[:iterTmpl.maxDepth+1]
 	}
@@ -2282,9 +2331,10 @@ func (t *Template) compileForEach(items any, render any, parent int16, depth int
 		Kind:   OpForEach,
 		Parent: parent,
 		Ext: &opForEach{
-			iterTmpl: iterTmpl,
-			slicePtr: slicePtr,
-			elemSize: elemSize,
+			iterTmpl:  iterTmpl,
+			slicePtr:  slicePtr,
+			elemSize:  elemSize,
+			elemIsPtr: elemIsPtr,
 		},
 	}
 
@@ -4879,6 +4929,9 @@ func (t *Template) layoutForEach(_ int16, op *Op, availW int16) (totalH, maxW in
 	for i := 0; i < sliceHdr.Len; i++ {
 		// Get element pointer for this item
 		elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*feExt.elemSize)
+		if feExt.elemIsPtr {
+			elemPtr = *(*unsafe.Pointer)(elemPtr)
+		}
 
 		// Layout sub-template for this item with element base
 		feExt.iterTmpl.elemBase = elemPtr // Set element base for condition evaluation
@@ -5466,6 +5519,9 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 
 			// Rebind template ops to this element's data
 			elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*feExt.elemSize)
+			if feExt.elemIsPtr {
+				elemPtr = *(*unsafe.Pointer)(elemPtr)
+			}
 			t.renderSubTemplate(buf, feExt.iterTmpl, itemAbsX, itemAbsY, itemGeom.W, elemPtr)
 		}
 
@@ -5854,6 +5910,9 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 				itemAbsX := absX + itemGeom.LocalX
 				itemAbsY := absY + itemGeom.LocalY
 				nestedElemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(j)*feExt.elemSize)
+				if feExt.elemIsPtr {
+					nestedElemPtr = *(*unsafe.Pointer)(nestedElemPtr)
+				}
 				sub.renderSubTemplate(buf, feExt.iterTmpl, itemAbsX, itemAbsY, itemGeom.W, nestedElemPtr)
 			}
 		}
@@ -5989,6 +6048,9 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 		// Get content from iteration template
 		if ext.iterTmpl != nil && len(ext.iterTmpl.ops) > 0 {
 			elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(i)*ext.elemSize)
+			if ext.elemIsPtr {
+				elemPtr = *(*unsafe.Pointer)(elemPtr)
+			}
 
 			if needsFullPipeline {
 				// Complex layout: do full width distribution, layout, and render

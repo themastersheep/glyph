@@ -26,8 +26,8 @@ func TestFilterBasic(t *testing.T) {
 		if f.Len() != 1 {
 			t.Fatalf("expected 1 match for 'av', got %d", f.Len())
 		}
-		if f.Items[0] != "bravo" {
-			t.Errorf("expected bravo, got %s", f.Items[0])
+		if *f.Items[0] != "bravo" {
+			t.Errorf("expected bravo, got %s", *f.Items[0])
 		}
 	})
 
@@ -124,6 +124,50 @@ func TestFilterStruct(t *testing.T) {
 	})
 }
 
+func TestFilterItemsReflectSourceMutations(t *testing.T) {
+	type task struct {
+		name   string
+		status string
+	}
+	items := []task{
+		{"deploy", "pending"},
+		{"build", "pending"},
+		{"test", "pending"},
+	}
+	f := NewFilter(&items, func(t *task) string { return t.name + " " + t.status })
+
+	// no filter active — all items visible
+	f.Reset()
+	if f.Len() != 3 {
+		t.Fatalf("expected 3 items, got %d", f.Len())
+	}
+
+	// mutate the source in-place
+	items[0].status = "running"
+	items[2].status = "done"
+
+	// Items should reflect the mutation WITHOUT calling Refresh()
+	if f.Items[0].status != "running" {
+		t.Errorf("expected Items[0].status='running' (live from source), got %q", f.Items[0].status)
+	}
+	if f.Items[2].status != "done" {
+		t.Errorf("expected Items[2].status='done' (live from source), got %q", f.Items[2].status)
+	}
+
+	// also verify with an active filter
+	f.Update("deploy")
+	if f.Len() != 1 {
+		t.Fatalf("expected 1 match, got %d", f.Len())
+	}
+
+	// mutate again after filtering
+	items[0].status = "complete"
+
+	if f.Items[0].status != "complete" {
+		t.Errorf("expected filtered Items[0].status='complete' (live from source), got %q", f.Items[0].status)
+	}
+}
+
 func TestFilterOriginalBounds(t *testing.T) {
 	items := []string{"a", "b", "c"}
 	f := NewFilter(&items, func(s *string) string { return *s })
@@ -155,8 +199,8 @@ func TestFilterRanking(t *testing.T) {
 		t.Fatalf("expected 3 matches, got %d", f.Len())
 	}
 	// best match should be "abc" (shortest, exact)
-	if f.Items[0] != "abc" {
-		t.Errorf("expected 'abc' as top result, got %q", f.Items[0])
+	if *f.Items[0] != "abc" {
+		t.Errorf("expected 'abc' as top result, got %q", *f.Items[0])
 	}
 }
 

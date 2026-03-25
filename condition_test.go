@@ -1,6 +1,9 @@
 package glyph
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestConditionEq(t *testing.T) {
 	t.Run("If comparable Eq true", func(t *testing.T) {
@@ -145,6 +148,118 @@ func extractLine(buf *Buffer, row, width int) string {
 		result[x] = buf.Get(x, row).Rune
 	}
 	return string(result)
+}
+
+func TestConditionInForEachWithPointerElements(t *testing.T) {
+	type item struct {
+		Name   string
+		Active bool
+	}
+	items := []*item{
+		{"alpha", true},
+		{"beta", false},
+	}
+
+	view := VBox(
+		ForEach(&items, func(e **item) any {
+			return HBox(
+				Text(&(*e).Name),
+				If(&(*e).Active).Then(Text(" YES")).Else(Text(" NO!")),
+			)
+		}),
+	)
+
+	tmpl := Build(view)
+	buf := NewBuffer(40, 5)
+	tmpl.Execute(buf, 40, 5)
+
+	line0 := extractLine(buf, 0, 20)
+	if !strings.Contains(line0, "YES") {
+		t.Errorf("expected line 0 to contain 'YES', got %q", line0)
+	}
+	line1 := extractLine(buf, 1, 20)
+	if !strings.Contains(line1, "NO!") {
+		t.Errorf("expected line 1 to contain 'NO!', got %q", line1)
+	}
+
+	// mutate source and re-render — should reflect without Refresh
+	items[0].Active = false
+	items[1].Active = true
+
+	buf.Clear()
+	tmpl.Execute(buf, 40, 5)
+
+	line0 = extractLine(buf, 0, 20)
+	if !strings.Contains(line0, "NO!") {
+		t.Errorf("after mutation: expected line 0 to contain 'NO!', got %q", line0)
+	}
+	line1 = extractLine(buf, 1, 20)
+	if !strings.Contains(line1, "YES") {
+		t.Errorf("after mutation: expected line 1 to contain 'YES', got %q", line1)
+	}
+}
+
+func TestConditionInFilterListRender(t *testing.T) {
+	type item struct {
+		Name   string
+		Active bool
+	}
+	items := []item{
+		{"alpha", true},
+		{"beta", false},
+	}
+
+	fl := FilterList(&items, func(e *item) string { return e.Name }).
+		MaxVisible(5).
+		Render(func(e *item) any {
+			return HBox(
+				Text(&e.Name),
+				If(&e.Active).Then(Text(" YES")).Else(Text(" NO!")),
+			)
+		})
+
+	view := VBox(fl)
+	tmpl := Build(view)
+	buf := NewBuffer(40, 10)
+	tmpl.Execute(buf, 40, 10)
+
+	// dump all lines for debugging
+	for row := 0; row < 8; row++ {
+		t.Logf("row %d: %q", row, extractLine(buf, row, 30))
+	}
+
+	// items render after the input+counter, find them
+	found := false
+	for row := 0; row < 8; row++ {
+		line := extractLine(buf, row, 30)
+		if strings.Contains(line, "alpha") {
+			found = true
+			if !strings.Contains(line, "YES") {
+				t.Errorf("alpha row should contain YES, got %q", line)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatal("could not find 'alpha' in any row")
+	}
+
+	// mutate source and re-render
+	items[0].Active = false
+	items[1].Active = true
+
+	buf.Clear()
+	tmpl.Execute(buf, 40, 10)
+
+	for row := 0; row < 8; row++ {
+		line := extractLine(buf, row, 30)
+		if strings.Contains(line, "alpha") {
+			if !strings.Contains(line, "NO!") {
+				t.Errorf("after mutation: alpha row should contain NO!, got %q", line)
+			}
+			break
+		}
+	}
 }
 
 func TestSwitch(t *testing.T) {

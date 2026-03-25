@@ -29,7 +29,7 @@ import (
 //	}()
 type FilterListC[T any] struct {
 	input  *InputC
-	list   *ListC[T]
+	list   *ListC[*T]
 	filter *Filter[T]
 
 	placeholder string
@@ -215,7 +215,7 @@ func (fl *FilterListC[T]) Placeholder(p string) *FilterListC[T] {
 // Render customises how each item appears in the list.
 // fn: func(item *T) any. return a component tree for the item row.
 func (fl *FilterListC[T]) Render(fn func(*T) any) *FilterListC[T] {
-	fl.list.Render(fn)
+	fl.list.Render(func(pp **T) any { return fn(*pp) })
 	return fl
 }
 
@@ -292,8 +292,11 @@ func (fl *FilterListC[T]) BindNav(down, up string) *FilterListC[T] {
 // Selected returns a pointer to the original source item corresponding
 // to the current list selection. Returns nil if nothing is selected.
 func (fl *FilterListC[T]) Selected() *T {
-	idx := fl.list.Index()
-	return fl.filter.Original(idx)
+	pp := fl.list.Selected()
+	if pp == nil || *pp == nil {
+		return nil
+	}
+	return *pp
 }
 
 // SelectedIndex returns the index into the original source slice.

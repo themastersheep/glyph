@@ -254,7 +254,7 @@ func (t *fzfTerm) score(candidate string) (int, bool) {
 //	f.Items                     // filtered+ranked subset, point a ListC at &f.Items
 //	f.Original(selectedIndex)   // map filtered index back to source item
 type Filter[T any] struct {
-	Items []T // filtered+ranked subset, safe to point a ListC at &f.Items
+	Items []*T // filtered+ranked subset — pointers into source for live reads
 
 	source    *[]T
 	extract   func(*T) string
@@ -324,7 +324,7 @@ func (f *Filter[T]) Update(query string) {
 	f.Items = f.Items[:0]
 	f.indices = f.indices[:0]
 	for _, m := range matches {
-		f.Items = append(f.Items, src[m.index])
+		f.Items = append(f.Items, &src[m.index])
 		f.indices = append(f.indices, m.index)
 	}
 	f.scored = len(src)
@@ -337,14 +337,14 @@ func (f *Filter[T]) Reset() {
 
 	src := *f.source
 	if cap(f.Items) < len(src) {
-		f.Items = make([]T, len(src))
+		f.Items = make([]*T, len(src))
 		f.indices = make([]int, len(src))
 	} else {
 		f.Items = f.Items[:len(src)]
 		f.indices = f.indices[:len(src)]
 	}
-	copy(f.Items, src)
-	for i := range f.indices {
+	for i := range src {
+		f.Items[i] = &src[i]
 		f.indices[i] = i
 	}
 	f.scored = len(src)
@@ -393,14 +393,14 @@ func (f *Filter[T]) appended() {
 	if f.query.Empty() {
 		// no filter active: extend Items and indices with new items
 		for i := f.scored; i < len(src); i++ {
-			f.Items = append(f.Items, src[i])
+			f.Items = append(f.Items, &src[i])
 			f.indices = append(f.indices, i)
 		}
 	} else {
 		// filter active: score only new items, append matches
 		for i := f.scored; i < len(src); i++ {
 			if _, ok := f.query.Score(f.extract(&src[i])); ok {
-				f.Items = append(f.Items, src[i])
+				f.Items = append(f.Items, &src[i])
 				f.indices = append(f.indices, i)
 			}
 		}
