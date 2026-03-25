@@ -460,17 +460,18 @@ type flex struct {
 // Render is optional - if nil, items are rendered using fmt.Sprintf("%v", item).
 // Marker defaults to "> " if not specified.
 type SelectionList struct {
-	Items         any    // *[]T - pointer to slice of items
-	Selected      *int   // pointer to selected index
-	Marker        string // selection marker (default "> ", use " " for no visible marker)
-	MarkerStyle   Style  // style for marker text (merged with SelectedStyle.BG for selected rows)
-	Render        any    // func(*T) any - optional, renders each item
-	MaxVisible    int    // max items to show (0 = all)
-	Style         Style  // default style for non-selected rows (e.g., background)
-	SelectedStyle Style  // style for selected row (e.g., background color)
-	len           int    // cached length for bounds checking
-	offset        int    // scroll offset for windowing
-	onMove        func() // called after selection index changes
+	Items         any       // *[]T - pointer to slice of items
+	Selected      *int      // pointer to selected index
+	Marker        string    // selection marker (default "> ", use " " for no visible marker)
+	MarkerStyle   Style     // style for marker text (merged with SelectedStyle.BG for selected rows)
+	Render        any       // func(*T) any - optional, renders each item
+	MaxVisible    int       // max items to show (0 = all)
+	Style         Style     // default style for non-selected rows (e.g., background)
+	SelectedStyle Style     // style for selected row (e.g., background color)
+	SelectedRef   *NodeRef  // tracks position of the selected row each frame
+	len           int       // cached length for bounds checking
+	offset        int       // scroll offset for windowing
+	onMove        func()    // called after selection index changes
 }
 
 // ensureVisible adjusts scroll offset so selected item is visible.

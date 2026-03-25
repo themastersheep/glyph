@@ -794,6 +794,8 @@ func (t TextC) FG(c any) TextC {
 		t.fgDyn = val
 	case conditionNode:
 		t.fgDyn = val
+	case switchNodeInterface:
+		t.fgDyn = val
 	case tweenNode:
 		t.fgDyn = val
 	}
@@ -1916,6 +1918,7 @@ type ListC[T any] struct {
 	maxVisible       int
 	style            Style
 	selectedStyle    Style
+	selectedRef      *NodeRef
 	cached           *SelectionList // cached instance for consistent reference
 	declaredBindings []binding
 }
@@ -1939,6 +1942,12 @@ func (l *ListC[T]) Ref(f func(*ListC[T])) *ListC[T] { f(l); return l }
 // Selection binds the selection index to an external pointer.
 func (l *ListC[T]) Selection(sel *int) *ListC[T] {
 	l.selected = sel
+	return l
+}
+
+// SelectedRef binds a NodeRef that tracks the selected row's position each frame.
+func (l *ListC[T]) SelectedRef(ref *NodeRef) *ListC[T] {
+	l.selectedRef = ref
 	return l
 }
 
@@ -2068,6 +2077,7 @@ func (l *ListC[T]) toSelectionList() *SelectionList {
 			MaxVisible:    l.maxVisible,
 			Style:         l.style,
 			SelectedStyle: l.selectedStyle,
+			SelectedRef:   l.selectedRef,
 		}
 		if l.render != nil {
 			sl.Render = l.render

@@ -1390,6 +1390,7 @@ type opSelectionList struct {
 	opForEach
 	listPtr      *SelectionList
 	selectedPtr  *int
+	selectedRef  *NodeRef
 	marker       string
 	markerWidth  int16
 	markerSpaces string
@@ -1921,6 +1922,7 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 	ext := &opSelectionList{
 		listPtr:      v,
 		selectedPtr:  v.Selected,
+		selectedRef:  v.SelectedRef,
 		marker:       marker,
 		markerWidth:  markerWidth,
 		markerSpaces: strings.Repeat(" ", int(markerWidth)),
@@ -6109,6 +6111,12 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 					}
 				}
 			}
+		}
+		if isSelected && ext.selectedRef != nil {
+			ext.selectedRef.X = int(absX)
+			ext.selectedRef.Y = y
+			ext.selectedRef.W = int(maxW)
+			ext.selectedRef.H = 1
 		}
 		y++
 	}
