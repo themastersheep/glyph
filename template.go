@@ -1179,6 +1179,12 @@ type opSwitch struct {
 	def      *Template
 }
 
+type opMatch struct {
+	node  matchNodeInterface
+	cases []*Template
+	def   *Template
+}
+
 type opCustomRenderer struct {
 	renderer Renderer
 }
@@ -1478,6 +1484,7 @@ const (
 	OpIf
 	OpForEach
 	OpSwitch
+	OpMatch
 
 	OpCustom // Custom renderer
 	OpLayout // Custom layout
@@ -1694,6 +1701,11 @@ func (t *Template) compile(node any, parent int16, depth int, elemBase unsafe.Po
 	// Check for SwitchNodeInterface (generic Switch)
 	if sw, ok := node.(switchNodeInterface); ok {
 		return t.compileSwitch(sw, parent, depth, elemBase, elemSize)
+	}
+
+	// Check for matchNodeInterface (generic Match)
+	if mn, ok := node.(matchNodeInterface); ok {
+		return t.compileMatch(mn, parent, depth, elemBase, elemSize)
 	}
 
 	return -1
@@ -2263,6 +2275,64 @@ func (t *Template) compileSwitch(sw switchNodeInterface, parent int16, depth int
 
 	return t.addOp(Op{
 		Kind:   OpSwitch,
+		Parent: parent,
+		Ext:    ext,
+	}, depth)
+}
+
+func (t *Template) compileMatch(mn matchNodeInterface, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
+	if elemBase != nil && elemSize > 0 {
+		ptrAddr := mn.getPtrAddr()
+		baseAddr := uintptr(elemBase)
+		if ptrAddr >= baseAddr && ptrAddr < baseAddr+elemSize {
+			mn.setPtrOffset(ptrAddr - baseAddr)
+		}
+	}
+
+	ext := &opMatch{node: mn}
+
+	caseNodes := mn.getCaseNodes()
+	ext.cases = make([]*Template, len(caseNodes))
+	for i, caseNode := range caseNodes {
+		if caseNode != nil {
+			caseTmpl := &Template{
+				ops:     make([]Op, 0, 16),
+				byDepth: make([][]int16, 8),
+				root:    t.evalRoot(),
+			}
+			for j := range caseTmpl.byDepth {
+				caseTmpl.byDepth[j] = make([]int16, 0, 4)
+			}
+			caseTmpl.compile(caseNode, -1, 0, elemBase, elemSize)
+			if caseTmpl.maxDepth >= 0 {
+				caseTmpl.byDepth = caseTmpl.byDepth[:caseTmpl.maxDepth+1]
+			}
+			caseTmpl.geom = make([]Geom, len(caseTmpl.ops))
+			ext.cases[i] = caseTmpl
+			t.pendingBindings = append(t.pendingBindings, caseTmpl.pendingBindings...)
+		}
+	}
+
+	if defNode := mn.getDefaultNode(); defNode != nil {
+		defTmpl := &Template{
+			ops:     make([]Op, 0, 16),
+			byDepth: make([][]int16, 8),
+			root:    t.evalRoot(),
+		}
+		for i := range defTmpl.byDepth {
+			defTmpl.byDepth[i] = make([]int16, 0, 4)
+		}
+		defTmpl.compile(defNode, -1, 0, elemBase, elemSize)
+		if defTmpl.maxDepth >= 0 {
+			defTmpl.byDepth = defTmpl.byDepth[:defTmpl.maxDepth+1]
+		}
+		defTmpl.geom = make([]Geom, len(defTmpl.ops))
+		ext.def = defTmpl
+		t.pendingBindings = append(t.pendingBindings, defTmpl.pendingBindings...)
+	}
+
+	return t.addOp(Op{
+		Kind:   OpMatch,
 		Parent: parent,
 		Ext:    ext,
 	}, depth)
@@ -3660,6 +3730,25 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 			geom.W = 0
 		}
 
+	case OpMatch:
+		mExt := op.Ext.(*opMatch)
+		var maxW int16
+		allTmpls := append(mExt.cases, mExt.def)
+		for _, ct := range allTmpls {
+			if ct == nil {
+				continue
+			}
+			w := ct.computeIntrinsicWidth(0)
+			if w > maxW {
+				maxW = w
+			}
+		}
+		if maxW > 0 {
+			geom.W = maxW
+		} else {
+			geom.W = availW
+		}
+
 	case OpContainer:
 		if w := op.width(); w > 0 {
 			geom.W = w
@@ -4281,6 +4370,25 @@ func (t *Template) layout(_ int16) {
 					geom.H = switchTmpl.Height()
 				}
 
+			case OpMatch:
+				if op.Parent != -1 {
+					break
+				}
+				mExt := op.Ext.(*opMatch)
+				matchIdx := mExt.node.getMatchIndexWithBase(t.elemBase)
+				var matchTmpl *Template
+				if matchIdx >= 0 && matchIdx < len(mExt.cases) {
+					matchTmpl = mExt.cases[matchIdx]
+				} else {
+					matchTmpl = mExt.def
+				}
+				if matchTmpl != nil {
+					matchTmpl.elemBase = t.elemBase
+					matchTmpl.distributeWidths(geom.W, t.elemBase)
+					matchTmpl.layout(0)
+					geom.H = matchTmpl.Height()
+				}
+
 			case OpLayout:
 				t.layoutCustom(idx, op, geom)
 
@@ -4435,6 +4543,39 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 					needGap = true
 				}
 
+			case OpMatch:
+				childMExt := childOp.Ext.(*opMatch)
+				var maxCaseW, maxCaseH int16
+				allCaseTmpls := append(childMExt.cases, childMExt.def)
+				for _, ct := range allCaseTmpls {
+					if ct == nil {
+						continue
+					}
+					ct.elemBase = t.elemBase
+					ct.distributeWidths(availW, t.elemBase)
+					ct.layout(0)
+					if len(ct.geom) > 0 && ct.geom[0].W > maxCaseW {
+						maxCaseW = ct.geom[0].W
+					}
+					if h := ct.Height(); h > maxCaseH {
+						maxCaseH = h
+					}
+				}
+				if maxCaseW > 0 {
+					if g := op.gap(); needGap && g > 0 {
+						cursor += int16(g)
+					}
+					t.geom[i].LocalX = contentOffX + cursor
+					t.geom[i].LocalY = contentOffY
+					t.geom[i].W = maxCaseW
+					t.geom[i].H = maxCaseH
+					cursor += maxCaseW
+					if maxCaseH > maxH {
+						maxH = maxCaseH
+					}
+					needGap = true
+				}
+
 			default:
 				childGeom := &t.geom[i]
 				// Add gap before this child if needed
@@ -4537,7 +4678,30 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 					t.geom[i].W = availW
 					cursor += h
 				} else {
-					t.geom[i].H = 0 // no matching case, takes no space
+					t.geom[i].H = 0
+				}
+
+			case OpMatch:
+				childMExt := childOp.Ext.(*opMatch)
+				var tmpl *Template
+				matchIdx := childMExt.node.getMatchIndexWithBase(t.elemBase)
+				if matchIdx >= 0 && matchIdx < len(childMExt.cases) {
+					tmpl = childMExt.cases[matchIdx]
+				} else {
+					tmpl = childMExt.def
+				}
+				if tmpl != nil {
+					tmpl.elemBase = t.elemBase
+					tmpl.distributeWidths(availW, t.elemBase)
+					tmpl.layout(0)
+					h := tmpl.Height()
+					t.geom[i].LocalX = contentOffX
+					t.geom[i].LocalY = contentOffY + cursor
+					t.geom[i].H = h
+					t.geom[i].W = availW
+					cursor += h
+				} else {
+					t.geom[i].H = 0
 				}
 
 			default:
@@ -5543,6 +5707,22 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 			tmpl.elemBase = t.elemBase           // propagate for offset-based text inside case templates
 			tmpl.render(buf, absX, absY, geom.W)
 		}
+
+	case OpMatch:
+		mExt := op.Ext.(*opMatch)
+		var tmpl *Template
+		matchIdx := mExt.node.getMatchIndexWithBase(t.elemBase)
+		if matchIdx >= 0 && matchIdx < len(mExt.cases) {
+			tmpl = mExt.cases[matchIdx]
+		} else {
+			tmpl = mExt.def
+		}
+		if tmpl != nil {
+			tmpl.clipMaxY = t.clipMaxY
+			tmpl.inheritedFill = t.inheritedFill
+			tmpl.elemBase = t.elemBase
+			tmpl.render(buf, absX, absY, geom.W)
+		}
 	}
 }
 
@@ -5601,7 +5781,15 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 		style := mergeStyle(baseStyle)
 		raw := ext.resolve(elemBase)
 		text := applyTransform(raw, style.Transform)
-		buf.WriteStringFast(int(absX), int(absY), text, style, int(maxW))
+		x := int(absX)
+		if style.Align != AlignLeft {
+			alignW := op.width()
+			if alignW == 0 {
+				alignW = maxW
+			}
+			x += alignOffset(text, int(alignW), style.Align)
+		}
+		buf.WriteStringFast(x, int(absY), text, style, int(maxW))
 
 	case OpProgress:
 		ext := op.Ext.(*opProgress)
@@ -5928,6 +6116,19 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 			tmpl = swExt.cases[matchIdx]
 		} else {
 			tmpl = swExt.def
+		}
+		if tmpl != nil {
+			sub.renderSubTemplate(buf, tmpl, absX, absY, geom.W, elemBase)
+		}
+
+	case OpMatch:
+		mExt := op.Ext.(*opMatch)
+		var tmpl *Template
+		matchIdx := mExt.node.getMatchIndexWithBase(elemBase)
+		if matchIdx >= 0 && matchIdx < len(mExt.cases) {
+			tmpl = mExt.cases[matchIdx]
+		} else {
+			tmpl = mExt.def
 		}
 		if tmpl != nil {
 			sub.renderSubTemplate(buf, tmpl, absX, absY, geom.W, elemBase)
@@ -7003,7 +7204,7 @@ func opKindName(k OpKind) string {
 	names := map[OpKind]string{
 		OpText: "Text", OpProgress: "Progress", OpRichText: "RichText",
 		OpLeader: "Leader", OpCounter: "Counter",
-		OpContainer: "Container", OpIf: "If", OpForEach: "ForEach", OpSwitch: "Switch",
+		OpContainer: "Container", OpIf: "If", OpForEach: "ForEach", OpSwitch: "Switch", OpMatch: "Match",
 		OpCustom: "Custom", OpLayout: "Layout", OpLayer: "Layer",
 		OpSelectionList: "SelectionList",
 		OpTable: "Table", OpAutoTable: "AutoTable", OpSparkline: "Sparkline",
