@@ -135,6 +135,9 @@ type Template struct {
 	// per-frame evaluators — conditions, animations, etc. run at start of Execute
 	evals []func()
 
+	// per-item evaluators — run once per ForEach item with elemBase set
+	itemEvals []func()
+
 	// frame timing — single timestamp per frame, shared by all animations
 	frameTime time.Time
 	animating bool
@@ -493,12 +496,12 @@ func (t *Template) compileDynColor(v any) *Color {
 	return nil
 }
 
-func (t *Template) compileDynStyle(v any) *Style {
+func (t *Template) compileDynStyle(v any, elemBase unsafe.Pointer, elemSize uintptr) *Style {
 	switch c := v.(type) {
 	case *Style:
 		return c
 	case conditionNode:
-		return t.compileCondStyle(c)
+		return t.compileCondStyle(c, elemBase, elemSize)
 	case tweenNode:
 		return t.compileTweenStyle(c)
 	}
@@ -507,9 +510,9 @@ func (t *Template) compileDynStyle(v any) *Style {
 
 // compileStyleDyn wires styleDyn/fgDyn/bgDyn into a *Style for any leaf component.
 // returns nil if no dynamic styling is needed.
-func (t *Template) compileStyleDyn(baseStyle Style, styleDyn, fgDyn, bgDyn any) *Style {
+func (t *Template) compileStyleDyn(baseStyle Style, styleDyn, fgDyn, bgDyn any, elemBase unsafe.Pointer, elemSize uintptr) *Style {
 	if styleDyn != nil {
-		return t.compileDynStyle(styleDyn)
+		return t.compileDynStyle(styleDyn, elemBase, elemSize)
 	}
 	if fgDyn == nil && bgDyn == nil {
 		return nil
@@ -556,20 +559,51 @@ func (t *Template) compileCondColor(cond conditionNode) *Color {
 	return storage
 }
 
-func (t *Template) compileCondStyle(cond conditionNode) *Style {
-	root := t.evalRoot()
+func (t *Template) compileCondStyle(cond conditionNode, elemBase unsafe.Pointer, elemSize uintptr) *Style {
 	storage := new(Style)
 	thenVal := cond.getThen()
 	elseVal := cond.getElse()
-	eval := func() {
+
+	// check if the condition pointer is within a ForEach element
+	inForEach := false
+	if elemBase != nil && elemSize > 0 {
+		ptrAddr := cond.getPtrAddr()
+		baseAddr := uintptr(elemBase)
+		if ptrAddr >= baseAddr && ptrAddr < baseAddr+elemSize {
+			cond.setOffset(ptrAddr - baseAddr)
+			inForEach = true
+		}
+	}
+
+	if inForEach {
+		// per-item eval — uses evaluateWithBase with the current elemBase
+		// initial eval uses the dummy pointer (elemBase not set yet during compilation)
 		if cond.evaluate() {
 			*storage = anyToStyle(thenVal)
 		} else {
 			*storage = anyToStyle(elseVal)
 		}
+		eval := func() {
+			if cond.evaluateWithBase(t.elemBase) {
+				*storage = anyToStyle(thenVal)
+			} else {
+				*storage = anyToStyle(elseVal)
+			}
+		}
+		t.itemEvals = append(t.itemEvals, eval)
+	} else {
+		// global eval — runs once per frame
+		root := t.evalRoot()
+		eval := func() {
+			if cond.evaluate() {
+				*storage = anyToStyle(thenVal)
+			} else {
+				*storage = anyToStyle(elseVal)
+			}
+		}
+		eval()
+		root.evals = append(root.evals, eval)
 	}
-	eval()
-	root.evals = append(root.evals, eval)
 	return storage
 }
 
@@ -1090,7 +1124,7 @@ func (t *Template) resolveTweenTargetStyle(target any) *Style {
 	case *Style:
 		return v
 	case conditionNode:
-		return t.compileCondStyle(v)
+		return t.compileCondStyle(v, nil, 0)
 	}
 	storage := new(Style)
 	*storage = anyToStyle(target)
@@ -1203,7 +1237,8 @@ type opText struct {
 	fn         func() string
 	fnCached   string // cached result from fn(), set during width measurement
 	style      Style
-	stylePtr   *Style // dynamic style override (nil = use static)
+	stylePtr   *Style         // dynamic style override (nil = use static)
+	styleCond  conditionNode  // conditional style for ForEach (nil = not conditional)
 }
 
 func (tx *opText) resolve(elemBase unsafe.Pointer) string {
@@ -1423,6 +1458,8 @@ type opOverlay struct {
 	backdropFG Color
 	bg         Color
 	childTmpl  *Template
+	anchor     *NodeRef
+	anchorPos  AnchorPosition
 }
 
 type opTable struct {
@@ -2476,7 +2513,7 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 		t.ops[idx].Dyn.Fill = v.fillPtr
 	}
 	if v.localStyleCond != nil {
-		t.ops[idx].LocalStyle = t.compileDynStyle(v.localStyleCond)
+		t.ops[idx].LocalStyle = t.compileDynStyle(v.localStyleCond, nil, 0)
 	} else if v.localStylePtr != nil {
 		t.ops[idx].LocalStyle = v.localStylePtr
 	} else if v.localStyle != nil {
@@ -2558,7 +2595,7 @@ func (t *Template) compileHBoxC(v HBoxC, parent int16, depth int, elemBase unsaf
 		t.ops[idx].Dyn.Fill = v.fillPtr
 	}
 	if v.localStyleCond != nil {
-		t.ops[idx].LocalStyle = t.compileDynStyle(v.localStyleCond)
+		t.ops[idx].LocalStyle = t.compileDynStyle(v.localStyleCond, nil, 0)
 	} else if v.localStylePtr != nil {
 		t.ops[idx].LocalStyle = v.localStylePtr
 	} else if v.localStyle != nil {
@@ -2608,7 +2645,7 @@ func (t *Template) compileTextC(v TextC, parent int16, depth int, elemBase unsaf
 	}
 
 	// compile dynamic style: whole style > individual FG/BG
-	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn)
+	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn, elemBase, elemSize)
 
 	idx := t.addOp(Op{
 		Kind:   OpText,
@@ -2676,7 +2713,7 @@ func (t *Template) compileHRuleC(v HRuleC, parent int16, depth int) int16 {
 		char = '─'
 	}
 	ext := &opRule{char: char, style: v.style, extend: v.extend}
-	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn)
+	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn, nil, 0)
 	return t.addOp(Op{
 		Kind:   OpHRule,
 		Parent: parent,
@@ -2691,7 +2728,7 @@ func (t *Template) compileVRuleC(v VRuleC, parent int16, depth int) int16 {
 		char = '│'
 	}
 	ext := &opRule{char: char, style: v.style, extend: v.extend}
-	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn)
+	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn, nil, 0)
 	idx := t.addOp(Op{
 		Kind:   OpVRule,
 		Parent: parent,
@@ -2720,7 +2757,7 @@ func (t *Template) compileProgressC(v ProgressC, parent int16, depth int, elemBa
 	}
 
 	ext := &opProgress{style: v.style}
-	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn)
+	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn, elemBase, elemSize)
 
 	switch val := v.value.(type) {
 	case int:
@@ -2766,7 +2803,7 @@ func (t *Template) compileSpinnerC(v SpinnerC, parent int16, depth int) int16 {
 		frames = SpinnerBraille
 	}
 	ext := &opSpinner{framePtr: v.frame, frames: frames, style: v.style}
-	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn)
+	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn, nil, 0)
 	return t.addOp(Op{
 		Kind:   OpSpinner,
 		Parent: parent,
@@ -2782,7 +2819,7 @@ func (t *Template) compileLeaderC(v LeaderC, parent int16, depth int) int16 {
 	}
 
 	ext := &opLeader{fill: fill, style: v.style}
-	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn)
+	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn, nil, 0)
 
 	switch label := v.label.(type) {
 	case string:
@@ -2855,7 +2892,7 @@ func (t *Template) compileCounterC(v counterC, parent int16, depth int) int16 {
 
 func (t *Template) compileSparklineC(v SparklineC, parent int16, depth int) int16 {
 	ext := &opSparkline{min: v.min, max: v.max, style: v.style}
-	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn)
+	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn, nil, 0)
 	switch vals := v.values.(type) {
 	case []float64:
 		ext.values = vals
@@ -2942,7 +2979,7 @@ func (t *Template) compileOverlayC(v OverlayC, parent int16, depth int) int16 {
 		childTmpl = t.buildWithRoot(VBox(v.children...))
 	}
 
-	centered := v.centered || (v.x == 0 && v.y == 0)
+	centered := v.centered || (v.x == 0 && v.y == 0 && v.anchor == nil)
 
 	backdropFG := v.backdropFG
 	if backdropFG.Mode == ColorDefault && v.backdrop {
@@ -2957,6 +2994,8 @@ func (t *Template) compileOverlayC(v OverlayC, parent int16, depth int) int16 {
 		backdropFG: backdropFG,
 		bg:         v.bg,
 		childTmpl:  childTmpl,
+		anchor:     v.anchor,
+		anchorPos:  v.anchorPos,
 	}
 
 	return t.addOp(Op{
@@ -5100,7 +5139,10 @@ func (t *Template) layoutForEach(_ int16, op *Op, availW int16) (totalH, maxW in
 		}
 
 		// Layout sub-template for this item with element base
-		feExt.iterTmpl.elemBase = elemPtr // Set element base for condition evaluation
+		feExt.iterTmpl.elemBase = elemPtr
+		for _, eval := range feExt.iterTmpl.itemEvals {
+			eval()
+		}
 		feExt.iterTmpl.distributeWidths(availW, elemPtr)
 		feExt.iterTmpl.layout(0)
 		itemH := feExt.iterTmpl.Height()
@@ -6258,6 +6300,9 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 			if needsFullPipeline {
 				// Complex layout: do full width distribution, layout, and render
 				ext.iterTmpl.elemBase = elemPtr
+				for _, eval := range ext.iterTmpl.itemEvals {
+					eval()
+				}
 				ext.iterTmpl.distributeWidths(contentW, elemPtr)
 				ext.iterTmpl.layout(0)
 				// set row style for selection (used by renderSubOp mergeStyle)
@@ -6280,6 +6325,10 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 				t.renderSubTemplate(buf, ext.iterTmpl, contentX, int16(y), contentW, elemPtr)
 			} else {
 				// Simple text: fast path (no layout needed)
+				ext.iterTmpl.elemBase = elemPtr
+				for _, eval := range ext.iterTmpl.itemEvals {
+					eval()
+				}
 				iterOp := &ext.iterTmpl.ops[0]
 
 				switch iterOp.Kind {
@@ -6626,7 +6675,38 @@ func (t *Template) renderOverlay(buf *Buffer, op *Op, screenW, screenH int16) {
 
 	// Calculate position
 	var posX, posY int16
-	if ext.centered {
+	if ext.anchor != nil {
+		ref := ext.anchor
+		switch ext.anchorPos {
+		case AnchorBelow:
+			posX = int16(ref.X)
+			posY = int16(ref.Y + ref.H)
+			if overlayW == 0 {
+				overlayW = int16(ref.W)
+			}
+		case AnchorAbove:
+			posX = int16(ref.X)
+			posY = int16(ref.Y) - overlayH
+			if overlayW == 0 {
+				overlayW = int16(ref.W)
+			}
+		case AnchorOnTop:
+			posX = int16(ref.X)
+			posY = int16(ref.Y)
+			if overlayW == 0 {
+				overlayW = int16(ref.W)
+			}
+			if overlayH == 0 {
+				overlayH = int16(ref.H)
+			}
+		case AnchorRightOf:
+			posX = int16(ref.X + ref.W)
+			posY = int16(ref.Y)
+		case AnchorLeftOf:
+			posX = int16(ref.X) - overlayW
+			posY = int16(ref.Y)
+		}
+	} else if ext.centered {
 		posX = (screenW - overlayW) / 2
 		posY = (screenH - overlayH) / 2
 	} else {

@@ -58,7 +58,8 @@ type App struct {
 	running      bool
 	renderMu     sync.Mutex
 	renderChan   chan struct{}
-	frameFlushed atomic.Bool // set when input renders directly, cleared by debounce timer
+	frameFlushed   atomic.Bool // set when input renders directly, cleared by debounce timer
+	forceFullFlush bool        // set by Go() to force full redraw on next frame
 
 	// Cursor state
 	cursorX, cursorY int
@@ -440,6 +441,7 @@ func (a *App) Go(name string) {
 	}
 	a.currentView = name
 	a.input.SetRouter(a.viewRouters[name])
+	a.forceFullFlush = true
 	a.RequestRender()
 }
 
@@ -783,7 +785,8 @@ func (a *App) render() {
 		if DebugTiming {
 			tDiff = time.Now()
 		}
-		if DebugFullRedraw {
+		if DebugFullRedraw || a.forceFullFlush {
+			a.forceFullFlush = false
 			a.screen.FlushFull()
 		} else {
 			a.screen.Flush() // diff + escape-sequence building

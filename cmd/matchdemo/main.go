@@ -53,19 +53,19 @@ func main() {
 
 					Match(&s.CPUVal,
 						Gt(90.0, Text(&s.CPU).Width(10).Align(AlignRight).Bold().FG(Red)),
-						Gt(70.0, Text(&s.CPU).Width(10).Align(AlignRight).FG(Yellow)),
+						Gt(70.0, Text(&s.CPU).Width(10).Align(AlignRight).FG(BrightYellow)),
 					).Default(Text(&s.CPU).Width(10).Align(AlignRight).FG(Green)),
 
 					Match(&s.MemVal,
 						Gt(85.0, Text(&s.Memory).Width(10).Align(AlignRight).Bold().FG(Red)),
-						Gt(60.0, Text(&s.Memory).Width(10).Align(AlignRight).FG(Yellow)),
+						Gt(60.0, Text(&s.Memory).Width(10).Align(AlignRight).FG(BrightYellow)),
 					).Default(Text(&s.Memory).Width(10).Align(AlignRight).FG(Green)),
 
 					Match(&s.LatVal,
 						Where(func(v float64) bool { return v > 500 },
 							Text(&s.Latency).Width(12).Align(AlignRight).Bold().FG(Red)),
 						Where(func(v float64) bool { return v > 200 },
-							Text(&s.Latency).Width(12).Align(AlignRight).FG(Yellow)),
+							Text(&s.Latency).Width(12).Align(AlignRight).FG(BrightYellow)),
 					).Default(Text(&s.Latency).Width(12).Align(AlignRight).FG(Green)),
 
 					Text(&s.RPS).Width(10).Align(AlignRight).FG(BrightBlack),
@@ -74,7 +74,7 @@ func main() {
 						Where(func(s string) bool { return strings.HasPrefix(s, "crit") },
 							Text(&s.Status).Width(12).Align(AlignRight).Bold().FG(Red)),
 						Where(func(s string) bool { return strings.HasPrefix(s, "warn") },
-							Text(&s.Status).Width(12).Align(AlignRight).FG(Yellow)),
+							Text(&s.Status).Width(12).Align(AlignRight).FG(BrightYellow)),
 					).Default(Text(&s.Status).Width(12).Align(AlignRight).FG(Green)),
 				)
 			}),

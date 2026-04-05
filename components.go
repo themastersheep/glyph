@@ -1802,6 +1802,18 @@ func (l LayerViewC) PaddingTRBL(a, b, c, d int16) LayerViewC {
 // Overlay - Modal/popup overlay
 // ============================================================================
 
+// AnchorPosition defines how an overlay is positioned relative to a NodeRef
+type AnchorPosition int
+
+const (
+	AnchorNone    AnchorPosition = iota
+	AnchorBelow                  // top of overlay at bottom of ref
+	AnchorAbove                  // bottom of overlay at top of ref
+	AnchorOnTop                  // overlay covers the ref exactly
+	AnchorRightOf                // left edge of overlay at right edge of ref
+	AnchorLeftOf                 // right edge of overlay at left edge of ref
+)
+
 type OverlayC struct {
 	centered   bool
 	backdrop   bool
@@ -1810,6 +1822,8 @@ type OverlayC struct {
 	height     int
 	backdropFG Color
 	bg         Color
+	anchor     *NodeRef
+	anchorPos  AnchorPosition
 	children   []any
 }
 
@@ -1858,6 +1872,56 @@ func (f OverlayFn) BG(c Color) OverlayFn {
 	return func(children ...any) OverlayC {
 		o := f(children...)
 		o.bg = c
+		return o
+	}
+}
+
+// Below positions the overlay directly below the referenced node.
+func (f OverlayFn) Below(ref *NodeRef) OverlayFn {
+	return func(children ...any) OverlayC {
+		o := f(children...)
+		o.anchor = ref
+		o.anchorPos = AnchorBelow
+		return o
+	}
+}
+
+// Above positions the overlay directly above the referenced node.
+func (f OverlayFn) Above(ref *NodeRef) OverlayFn {
+	return func(children ...any) OverlayC {
+		o := f(children...)
+		o.anchor = ref
+		o.anchorPos = AnchorAbove
+		return o
+	}
+}
+
+// OnTop positions the overlay covering the referenced node exactly.
+func (f OverlayFn) OnTop(ref *NodeRef) OverlayFn {
+	return func(children ...any) OverlayC {
+		o := f(children...)
+		o.anchor = ref
+		o.anchorPos = AnchorOnTop
+		return o
+	}
+}
+
+// RightOf positions the overlay to the right of the referenced node.
+func (f OverlayFn) RightOf(ref *NodeRef) OverlayFn {
+	return func(children ...any) OverlayC {
+		o := f(children...)
+		o.anchor = ref
+		o.anchorPos = AnchorRightOf
+		return o
+	}
+}
+
+// LeftOf positions the overlay to the left of the referenced node.
+func (f OverlayFn) LeftOf(ref *NodeRef) OverlayFn {
+	return func(children ...any) OverlayC {
+		o := f(children...)
+		o.anchor = ref
+		o.anchorPos = AnchorLeftOf
 		return o
 	}
 }
