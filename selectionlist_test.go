@@ -232,6 +232,313 @@ func TestSelectionListOverflowClipped(t *testing.T) {
 	}
 }
 
+func TestSelectionListVariableHeight(t *testing.T) {
+	type item struct {
+		Title string
+		Desc  string
+	}
+
+	items := []item{
+		{"Open", "Opens a file from disk"},
+		{"Save", "Saves the current buffer"},
+		{"Quit", "Exits the application"},
+	}
+	selected := 1
+
+	list := &SelectionList{
+		Items:    &items,
+		Selected: &selected,
+		Marker:   "> ",
+		Render: func(it *item) any {
+			// 2-row item: title on first line, description on second
+			return VBox(
+				Text(&it.Title),
+				Text(&it.Desc),
+			)
+		},
+	}
+
+	view := VBox(list)
+
+	tmpl := Build(view)
+	buf := NewBuffer(40, 20)
+	tmpl.Execute(buf, 40, 20)
+
+	for y := 0; y < 10; y++ {
+		t.Logf("Line %2d: %q", y, buf.GetLine(y))
+	}
+
+	// Item 0 ("Open") occupies lines 0-1
+	line0 := buf.GetLine(0)
+	line1 := buf.GetLine(1)
+	if !contains(line0, "Open") {
+		t.Errorf("Line 0 should contain 'Open': %q", line0)
+	}
+	if !contains(line1, "Opens a file") {
+		t.Errorf("Line 1 should contain description: %q", line1)
+	}
+	// non-selected: no marker
+	if contains(line0, ">") {
+		t.Errorf("Line 0 should NOT have marker (item 0 not selected): %q", line0)
+	}
+
+	// Item 1 ("Save") is selected, occupies lines 2-3
+	line2 := buf.GetLine(2)
+	line3 := buf.GetLine(3)
+	if !contains(line2, "> Save") {
+		t.Errorf("Line 2 should have marker + 'Save': %q", line2)
+	}
+	if !contains(line3, "Saves") {
+		t.Errorf("Line 3 should contain description: %q", line3)
+	}
+
+	// Item 2 ("Quit") occupies lines 4-5
+	line4 := buf.GetLine(4)
+	line5 := buf.GetLine(5)
+	if !contains(line4, "Quit") {
+		t.Errorf("Line 4 should contain 'Quit': %q", line4)
+	}
+	if !contains(line5, "Exits") {
+		t.Errorf("Line 5 should contain description: %q", line5)
+	}
+
+	// Line 6 should be empty (no more items)
+	line6 := buf.GetLine(6)
+	if contains(line6, "Open") || contains(line6, "Save") || contains(line6, "Quit") {
+		t.Errorf("Line 6 should be empty, got: %q", line6)
+	}
+}
+
+func TestSelectionListVariableHeightMaxVisible(t *testing.T) {
+	type item struct {
+		Title string
+		Desc  string
+	}
+
+	items := []item{
+		{"Alpha", "First item"},
+		{"Beta", "Second item"},
+		{"Gamma", "Third item"},
+		{"Delta", "Fourth item"},
+		{"Epsilon", "Fifth item"},
+	}
+	selected := 0
+
+	list := &SelectionList{
+		Items:      &items,
+		Selected:   &selected,
+		Marker:     "> ",
+		MaxVisible: 3,
+		Render: func(it *item) any {
+			return VBox(
+				Text(&it.Title),
+				Text(&it.Desc),
+			)
+		},
+	}
+
+	view := VBox(list)
+
+	tmpl := Build(view)
+	buf := NewBuffer(40, 20)
+	tmpl.Execute(buf, 40, 20)
+
+	for y := 0; y < 12; y++ {
+		t.Logf("Line %2d: %q", y, buf.GetLine(y))
+	}
+
+	// 3 items visible x 2 rows each = 6 rows total
+	line0 := buf.GetLine(0)
+	line5 := buf.GetLine(5)
+	line6 := buf.GetLine(6)
+
+	if !contains(line0, "> Alpha") {
+		t.Errorf("Line 0 should have marker + 'Alpha': %q", line0)
+	}
+	if !contains(line5, "Third item") {
+		t.Errorf("Line 5 should contain 'Third item' (last visible item desc): %q", line5)
+	}
+	// Item 4 ("Delta") should NOT be visible
+	if contains(line6, "Delta") {
+		t.Errorf("Line 6 should NOT contain 'Delta' (MaxVisible=3): %q", line6)
+	}
+}
+
+func TestSelectionListVariableHeightScrolling(t *testing.T) {
+	type item struct {
+		Title string
+		Desc  string
+	}
+
+	items := []item{
+		{"Alpha", "First"},
+		{"Beta", "Second"},
+		{"Gamma", "Third"},
+		{"Delta", "Fourth"},
+		{"Epsilon", "Fifth"},
+	}
+	selected := 4 // select last item
+
+	list := &SelectionList{
+		Items:      &items,
+		Selected:   &selected,
+		Marker:     "> ",
+		MaxVisible: 3,
+		Render: func(it *item) any {
+			return VBox(
+				Text(&it.Title),
+				Text(&it.Desc),
+			)
+		},
+	}
+
+	view := VBox(list)
+
+	tmpl := Build(view)
+	buf := NewBuffer(40, 20)
+	tmpl.Execute(buf, 40, 20)
+
+	for y := 0; y < 12; y++ {
+		t.Logf("Line %2d: %q", y, buf.GetLine(y))
+	}
+
+	// With scrolling, the last 3 items should be visible: Gamma, Delta, Epsilon
+	// Epsilon (selected) should have marker
+	found := false
+	for y := 0; y < 12; y++ {
+		line := buf.GetLine(y)
+		if contains(line, "> Epsilon") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Selected item 'Epsilon' with marker not found in rendered output")
+	}
+
+	// Alpha should NOT be visible (scrolled past)
+	for y := 0; y < 12; y++ {
+		line := buf.GetLine(y)
+		if contains(line, "Alpha") {
+			t.Errorf("'Alpha' should not be visible (scrolled past), found on line %d: %q", y, line)
+			break
+		}
+	}
+}
+
+func TestSelectionListVariableHeightSelectedRef(t *testing.T) {
+	type item struct {
+		Title string
+		Desc  string
+	}
+
+	items := []item{
+		{"Open", "Opens file"},
+		{"Save", "Saves file"},
+		{"Quit", "Exits app"},
+	}
+	selected := 1
+	ref := &NodeRef{}
+
+	list := &SelectionList{
+		Items:       &items,
+		Selected:    &selected,
+		Marker:      "> ",
+		SelectedRef: ref,
+		Render: func(it *item) any {
+			return VBox(
+				Text(&it.Title),
+				Text(&it.Desc),
+			)
+		},
+	}
+
+	view := VBox(list)
+
+	tmpl := Build(view)
+	buf := NewBuffer(40, 20)
+	tmpl.Execute(buf, 40, 20)
+
+	// Item 0 takes rows 0-1, so item 1 starts at Y=2 with height 2
+	if ref.Y != 2 {
+		t.Errorf("SelectedRef.Y should be 2, got %d", ref.Y)
+	}
+	if ref.H != 2 {
+		t.Errorf("SelectedRef.H should be 2, got %d", ref.H)
+	}
+}
+
+func TestSelectionListVariableHeightClipped(t *testing.T) {
+	// variable-height items inside a bordered box with fixed screen height;
+	// items must not overflow beyond the border
+	type item struct {
+		Title string
+		Desc  string
+	}
+
+	items := []item{
+		{"Alpha", "First"},
+		{"Beta", "Second"},
+		{"Gamma", "Third"},
+		{"Delta", "Fourth"},
+		{"Epsilon", "Fifth"},
+		{"Zeta", "Sixth"},
+		{"Eta", "Seventh"},
+		{"Theta", "Eighth"},
+	}
+	selected := 0
+
+	list := &SelectionList{
+		Items:      &items,
+		Selected:   &selected,
+		Marker:     "> ",
+		MaxVisible: 20,
+		Render: func(it *item) any {
+			return VBox(
+				Text(&it.Title),
+				Text(&it.Desc),
+			)
+		},
+	}
+
+	view := VBox.Border(BorderSingle).Title("test")(
+		Text("header"),
+		HRule(),
+		VBox.Grow(1)(list),
+		HRule(),
+		Text("footer"),
+	)
+
+	screenH := int16(15)
+	tmpl := Build(view)
+	buf := NewBuffer(40, int(screenH))
+	tmpl.Execute(buf, 40, screenH)
+
+	for y := 0; y < int(screenH); y++ {
+		t.Logf("Line %2d: %q", y, buf.GetLine(y))
+	}
+
+	// bottom border must be on last line
+	bottomLeft := buf.Get(0, int(screenH)-1)
+	if bottomLeft.Rune != '└' {
+		t.Errorf("Bottom-left corner should be └, got %c", bottomLeft.Rune)
+	}
+
+	// footer must be visible
+	footerLine := buf.GetLine(int(screenH) - 2)
+	if !contains(footerLine, "footer") {
+		t.Errorf("Footer should be visible: %q", footerLine)
+	}
+
+	// no item content on footer or border lines
+	for _, y := range []int{int(screenH) - 2, int(screenH) - 1} {
+		line := buf.GetLine(y)
+		if contains(line, "Alpha") || contains(line, "Beta") || contains(line, "Gamma") {
+			t.Errorf("List content should not overflow into footer/border on line %d: %q", y, line)
+		}
+	}
+}
+
 func TestSelectionListOverflowScrolling(t *testing.T) {
 	// When the list is clipped to fewer rows than MaxVisible, scrolling
 	// to a selected item near the bottom should still work correctly.

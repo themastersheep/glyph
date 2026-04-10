@@ -115,7 +115,7 @@ func (d *dynColor) set(v any) {
 
 func (d *dynColor) compile(tmpl *Template) {
 	if d.dyn != nil {
-		d.ptr = tmpl.compileDynColor(d.dyn)
+		d.ptr = tmpl.compileDynColor(d.dyn, nil, 0)
 	}
 }
 

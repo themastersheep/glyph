@@ -482,12 +482,12 @@ func (t *Template) compileDynInt8(v any) *int8 {
 	return nil
 }
 
-func (t *Template) compileDynColor(v any) *Color {
+func (t *Template) compileDynColor(v any, elemBase unsafe.Pointer, elemSize uintptr) *Color {
 	switch c := v.(type) {
 	case *Color:
 		return c
 	case conditionNode:
-		return t.compileCondColor(c)
+		return t.compileCondColor(c, elemBase, elemSize)
 	case switchNodeInterface:
 		return t.compileSwitchColor(c)
 	case tweenNode:
@@ -522,10 +522,10 @@ func (t *Template) compileStyleDyn(baseStyle Style, styleDyn, fgDyn, bgDyn any, 
 	var fgPtr *Color
 	var bgPtr *Color
 	if fgDyn != nil {
-		fgPtr = t.compileDynColor(fgDyn)
+		fgPtr = t.compileDynColor(fgDyn, elemBase, elemSize)
 	}
 	if bgDyn != nil {
-		bgPtr = t.compileDynColor(bgDyn)
+		bgPtr = t.compileDynColor(bgDyn, elemBase, elemSize)
 	}
 	root := t.evalRoot()
 	base := baseStyle
@@ -542,20 +542,47 @@ func (t *Template) compileStyleDyn(baseStyle Style, styleDyn, fgDyn, bgDyn any, 
 	return storage
 }
 
-func (t *Template) compileCondColor(cond conditionNode) *Color {
-	root := t.evalRoot()
+func (t *Template) compileCondColor(cond conditionNode, elemBase unsafe.Pointer, elemSize uintptr) *Color {
 	storage := new(Color)
 	thenVal := cond.getThen()
 	elseVal := cond.getElse()
-	eval := func() {
+
+	inForEach := false
+	if elemBase != nil && elemSize > 0 {
+		ptrAddr := cond.getPtrAddr()
+		baseAddr := uintptr(elemBase)
+		if ptrAddr >= baseAddr && ptrAddr < baseAddr+elemSize {
+			cond.setOffset(ptrAddr - baseAddr)
+			inForEach = true
+		}
+	}
+
+	if inForEach {
 		if cond.evaluate() {
 			*storage = anyToColor(thenVal)
 		} else {
 			*storage = anyToColor(elseVal)
 		}
+		eval := func() {
+			if cond.evaluateWithBase(t.elemBase) {
+				*storage = anyToColor(thenVal)
+			} else {
+				*storage = anyToColor(elseVal)
+			}
+		}
+		t.itemEvals = append(t.itemEvals, eval)
+	} else {
+		root := t.evalRoot()
+		eval := func() {
+			if cond.evaluate() {
+				*storage = anyToColor(thenVal)
+			} else {
+				*storage = anyToColor(elseVal)
+			}
+		}
+		eval()
+		root.evals = append(root.evals, eval)
 	}
-	eval()
-	root.evals = append(root.evals, eval)
 	return storage
 }
 
@@ -1112,7 +1139,7 @@ func (t *Template) resolveTweenTargetColor(target any) *Color {
 	case *Color:
 		return v
 	case conditionNode:
-		return t.compileCondColor(v)
+		return t.compileCondColor(v, nil, 0)
 	}
 	storage := new(Color)
 	*storage = anyToColor(target)
@@ -2505,7 +2532,7 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
-		t.ops[idx].Dyn.Fill = t.compileDynColor(v.fillCond)
+		t.ops[idx].Dyn.Fill = t.compileDynColor(v.fillCond, elemBase, elemSize)
 	} else if v.fillPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
@@ -2587,7 +2614,7 @@ func (t *Template) compileHBoxC(v HBoxC, parent int16, depth int, elemBase unsaf
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
 		}
-		t.ops[idx].Dyn.Fill = t.compileDynColor(v.fillCond)
+		t.ops[idx].Dyn.Fill = t.compileDynColor(v.fillCond, elemBase, elemSize)
 	} else if v.fillPtr != nil {
 		if t.ops[idx].Dyn == nil {
 			t.ops[idx].Dyn = &OpDyn{}
@@ -4307,11 +4334,58 @@ func (t *Template) layout(_ int16) {
 					ext.listPtr.len = sliceHdr.Len
 					ext.listPtr.ensureVisible()
 				}
-				visibleCount := sliceHdr.Len
-				if ext.listPtr != nil && ext.listPtr.MaxVisible > 0 && visibleCount > ext.listPtr.MaxVisible {
-					visibleCount = ext.listPtr.MaxVisible
+
+				// layout each item to get per-item heights (follows ForEach pattern)
+				contentW := geom.W - ext.markerWidth
+				if cap(ext.geoms) < sliceHdr.Len {
+					ext.geoms = make([]Geom, sliceHdr.Len)
 				}
-				geom.H = int16(visibleCount)
+				ext.geoms = ext.geoms[:sliceHdr.Len]
+
+				cursor := int16(0)
+				for li := 0; li < sliceHdr.Len; li++ {
+					itemH := int16(1) // default for simple text items
+					if ext.iterTmpl != nil && len(ext.iterTmpl.ops) > 0 {
+						firstOp := &ext.iterTmpl.ops[0]
+						if firstOp.Kind == OpContainer || firstOp.Kind == OpLayout || firstOp.Kind == OpJump {
+							elemPtr := unsafe.Pointer(uintptr(sliceHdr.Data) + uintptr(li)*ext.elemSize)
+							if ext.elemIsPtr {
+								elemPtr = *(*unsafe.Pointer)(elemPtr)
+							}
+							ext.iterTmpl.elemBase = elemPtr
+							for _, eval := range ext.iterTmpl.itemEvals {
+								eval()
+							}
+							ext.iterTmpl.distributeWidths(contentW, elemPtr)
+							ext.iterTmpl.layout(0)
+							itemH = ext.iterTmpl.Height()
+							if itemH < 1 {
+								itemH = 1
+							}
+						}
+					}
+					ext.geoms[li].LocalX = 0
+					ext.geoms[li].LocalY = cursor
+					ext.geoms[li].H = itemH
+					ext.geoms[li].W = geom.W
+					cursor += itemH
+				}
+
+				// total height is sum of visible items (windowed by MaxVisible or all)
+				startIdx := 0
+				endIdx := sliceHdr.Len
+				if ext.listPtr != nil && ext.listPtr.MaxVisible > 0 {
+					startIdx = ext.listPtr.offset
+					endIdx = startIdx + ext.listPtr.MaxVisible
+					if endIdx > sliceHdr.Len {
+						endIdx = sliceHdr.Len
+					}
+				}
+				totalH := int16(0)
+				for li := startIdx; li < endIdx; li++ {
+					totalH += ext.geoms[li].H
+				}
+				geom.H = totalH
 				if geom.H == 0 {
 					geom.H = 1
 				}
@@ -6182,7 +6256,7 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, absY, maxW int16) {
 	ext := op.Ext.(*opSelectionList)
 	sliceHdr := *(*sliceHeader)(ext.slicePtr)
-	if sliceHdr.Len == 0 {
+	if sliceHdr.Len == 0 || len(ext.geoms) == 0 {
 		return
 	}
 
@@ -6191,6 +6265,7 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 		selectedIdx = *ext.selectedPtr
 	}
 
+	// height-aware windowing: determine visible item range using per-item heights
 	startIdx := 0
 	endIdx := sliceHdr.Len
 	if ext.listPtr != nil && ext.listPtr.MaxVisible > 0 {
@@ -6206,26 +6281,48 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 		if availableRows <= 0 {
 			return
 		}
-		if endIdx-startIdx > availableRows {
-			endIdx = startIdx + availableRows
+
+		// trim endIdx so total height of visible items fits in available rows
+		rowsUsed := 0
+		trimEnd := endIdx
+		for ci := startIdx; ci < endIdx; ci++ {
+			ih := int(ext.geoms[ci].H)
+			if rowsUsed+ih > availableRows {
+				trimEnd = ci
+				break
+			}
+			rowsUsed += ih
 		}
+		endIdx = trimEnd
+
+		// ensure selected item is visible (scroll adjustment)
 		if ext.listPtr != nil && selectedIdx >= 0 {
-			effectiveVisible := endIdx - startIdx
 			if selectedIdx < startIdx {
 				startIdx = selectedIdx
-				endIdx = startIdx + effectiveVisible
-				if endIdx > sliceHdr.Len {
-					endIdx = sliceHdr.Len
+				// recalculate endIdx forward from new startIdx
+				rowsUsed = 0
+				endIdx = sliceHdr.Len
+				for ci := startIdx; ci < sliceHdr.Len; ci++ {
+					ih := int(ext.geoms[ci].H)
+					if rowsUsed+ih > availableRows {
+						endIdx = ci
+						break
+					}
+					rowsUsed += ih
 				}
 				ext.listPtr.offset = startIdx
-			} else if selectedIdx >= startIdx+effectiveVisible {
-				startIdx = selectedIdx - effectiveVisible + 1
-				if startIdx < 0 {
-					startIdx = 0
-				}
-				endIdx = startIdx + effectiveVisible
-				if endIdx > sliceHdr.Len {
-					endIdx = sliceHdr.Len
+			} else if selectedIdx >= endIdx {
+				// scroll down: place selected item at the bottom of the window
+				endIdx = selectedIdx + 1
+				rowsUsed = 0
+				startIdx = endIdx
+				for ci := endIdx - 1; ci >= 0; ci-- {
+					ih := int(ext.geoms[ci].H)
+					if rowsUsed+ih > availableRows {
+						break
+					}
+					rowsUsed += ih
+					startIdx = ci
 				}
 				ext.listPtr.offset = startIdx
 			}
@@ -6250,12 +6347,13 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 		markerBaseStyle = ext.listPtr.MarkerStyle
 	}
 
-	// Render visible items
+	// Render visible items using per-item heights from layout phase
 	y := int(absY)
 	for i := startIdx; i < endIdx; i++ {
+		itemH := int(ext.geoms[i].H)
 		isSelected := i == selectedIdx
 
-		// fill row with selection style
+		// fill item area with selection style (covers full item height)
 		var rowStyle Style
 		if isSelected {
 			rowStyle = selectedStyle
@@ -6263,7 +6361,7 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 			rowStyle.BG = defaultStyle.BG
 		}
 		if rowStyle.BG.Mode != 0 || rowStyle.Attr != 0 {
-			buf.FillRect(int(absX), y, int(maxW), 1, Cell{Rune: ' ', Style: rowStyle})
+			buf.FillRect(int(absX), y, int(maxW), itemH, Cell{Rune: ' ', Style: rowStyle})
 		}
 
 		// Determine marker text and style
@@ -6271,23 +6369,20 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 		markerStyle := markerBaseStyle
 		if isSelected {
 			markerText = ext.marker
-			// Merge: use MarkerStyle but inherit SelectedStyle background if marker has none
 			if markerStyle.BG.Mode == 0 && selectedStyle.BG.Mode != 0 {
 				markerStyle.BG = selectedStyle.BG
 			}
-			// Also inherit foreground from SelectedStyle if MarkerStyle has none
 			if markerStyle.FG.Mode == 0 && selectedStyle.FG.Mode != 0 {
 				markerStyle.FG = selectedStyle.FG
 			}
 		} else {
 			markerText = spaces
-			// For non-selected rows, inherit from default style
 			if markerStyle.BG.Mode == 0 && defaultStyle.BG.Mode != 0 {
 				markerStyle.BG = defaultStyle.BG
 			}
 		}
 
-		// Write marker first
+		// write marker on first row of the item
 		buf.WriteStringFast(int(absX), y, markerText, t.effectiveStyle(markerStyle), int(maxW))
 
 		// Get content from iteration template
@@ -6298,14 +6393,13 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 			}
 
 			if needsFullPipeline {
-				// Complex layout: do full width distribution, layout, and render
+				// complex layout: use pre-calculated heights from layout phase
 				ext.iterTmpl.elemBase = elemPtr
 				for _, eval := range ext.iterTmpl.itemEvals {
 					eval()
 				}
 				ext.iterTmpl.distributeWidths(contentW, elemPtr)
 				ext.iterTmpl.layout(0)
-				// set row style for selection (used by renderSubOp mergeStyle)
 				if isSelected {
 					ext.iterTmpl.rowBG = selectedStyle.BG
 					ext.iterTmpl.rowFG = selectedStyle.FG
@@ -6366,9 +6460,9 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 			ext.selectedRef.X = int(absX)
 			ext.selectedRef.Y = y
 			ext.selectedRef.W = int(maxW)
-			ext.selectedRef.H = 1
+			ext.selectedRef.H = itemH
 		}
-		y++
+		y += itemH
 	}
 }
 
