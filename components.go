@@ -59,6 +59,7 @@ type VBoxC struct {
 	gap              int8
 	border           BorderStyle
 	borderFG         *Color
+	borderFGDyn      any
 	borderBG         *Color
 	title            string
 	width            int16
@@ -184,6 +185,8 @@ func (f VBoxFn) BorderFG(c any) VBoxFn {
 			v.borderFG = &val
 		case *Color:
 			v.borderFG = val
+		default:
+			v.borderFGDyn = c
 		}
 		return v
 	}
@@ -1982,6 +1985,8 @@ type ListC[T any] struct {
 	maxVisible       int
 	style            Style
 	selectedStyle    Style
+	styleDyn         any
+	selectedStyleDyn any
 	selectedRef      *NodeRef
 	cached           *SelectionList // cached instance for consistent reference
 	declaredBindings []binding
@@ -2100,14 +2105,26 @@ func (l *ListC[T]) MaxVisible(n int) *ListC[T] {
 }
 
 // Style sets the default style for non-selected rows.
-func (l *ListC[T]) Style(s Style) *ListC[T] {
-	l.style = s
+// Accepts Style, *Style, conditionNode, or tweenNode.
+func (l *ListC[T]) Style(s any) *ListC[T] {
+	switch v := s.(type) {
+	case Style:
+		l.style = v
+	default:
+		l.styleDyn = s
+	}
 	return l
 }
 
 // SelectedStyle sets the style for the selected row.
-func (l *ListC[T]) SelectedStyle(s Style) *ListC[T] {
-	l.selectedStyle = s
+// Accepts Style, *Style, conditionNode, or tweenNode.
+func (l *ListC[T]) SelectedStyle(s any) *ListC[T] {
+	switch v := s.(type) {
+	case Style:
+		l.selectedStyle = v
+	default:
+		l.selectedStyleDyn = s
+	}
 	return l
 }
 
@@ -2143,6 +2160,8 @@ func (l *ListC[T]) toSelectionList() *SelectionList {
 			SelectedStyle: l.selectedStyle,
 			SelectedRef:   l.selectedRef,
 		}
+		sl.StyleDyn = l.styleDyn
+		sl.SelectedStyleDyn = l.selectedStyleDyn
 		if l.render != nil {
 			sl.Render = l.render
 		} else {

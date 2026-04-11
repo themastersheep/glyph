@@ -547,6 +547,20 @@ func (t *Template) compileCondColor(cond conditionNode, elemBase unsafe.Pointer,
 	thenVal := cond.getThen()
 	elseVal := cond.getElse()
 
+	// recursively compile nested conditions
+	resolveColor := func(v any) func() Color {
+		switch nested := v.(type) {
+		case conditionNode:
+			ptr := t.compileCondColor(nested, elemBase, elemSize)
+			return func() Color { return *ptr }
+		default:
+			c := anyToColor(v)
+			return func() Color { return c }
+		}
+	}
+	thenFn := resolveColor(thenVal)
+	elseFn := resolveColor(elseVal)
+
 	inForEach := false
 	if elemBase != nil && elemSize > 0 {
 		ptrAddr := cond.getPtrAddr()
@@ -559,15 +573,15 @@ func (t *Template) compileCondColor(cond conditionNode, elemBase unsafe.Pointer,
 
 	if inForEach {
 		if cond.evaluate() {
-			*storage = anyToColor(thenVal)
+			*storage = thenFn()
 		} else {
-			*storage = anyToColor(elseVal)
+			*storage = elseFn()
 		}
 		eval := func() {
 			if cond.evaluateWithBase(t.elemBase) {
-				*storage = anyToColor(thenVal)
+				*storage = thenFn()
 			} else {
-				*storage = anyToColor(elseVal)
+				*storage = elseFn()
 			}
 		}
 		t.itemEvals = append(t.itemEvals, eval)
@@ -575,9 +589,9 @@ func (t *Template) compileCondColor(cond conditionNode, elemBase unsafe.Pointer,
 		root := t.evalRoot()
 		eval := func() {
 			if cond.evaluate() {
-				*storage = anyToColor(thenVal)
+				*storage = thenFn()
 			} else {
-				*storage = anyToColor(elseVal)
+				*storage = elseFn()
 			}
 		}
 		eval()
@@ -1131,8 +1145,10 @@ func (t *Template) compileTweenStyle(tw tweenNode) *Style {
 		*storage = lerpStyle(startVal, target, progress)
 		root.animating = true
 	})
+
 	return storage
 }
+
 
 func (t *Template) resolveTweenTargetColor(target any) *Color {
 	switch v := target.(type) {
@@ -2017,7 +2033,17 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 		Ext:    ext,
 	}
 
-	return t.addOp(op, depth)
+	idx := t.addOp(op, depth)
+
+	// compile dynamic styles for List
+	if v.StyleDyn != nil {
+		v.StylePtr = t.compileDynStyle(v.StyleDyn, nil, 0)
+	}
+	if v.SelectedStyleDyn != nil {
+		v.SelectedStylePtr = t.compileDynStyle(v.SelectedStyleDyn, nil, 0)
+	}
+
+	return idx
 }
 
 func (t *Template) compileTable(v Table, parent int16, depth int) int16 {
@@ -2495,6 +2521,10 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 	if v.flexGrowCond != nil {
 		f.flexGrowPtr = t.compileDynFloat32(v.flexGrowCond)
 	}
+	bfg := v.borderFG
+	if v.borderFGDyn != nil {
+		bfg = t.compileDynColor(v.borderFGDyn, elemBase, elemSize)
+	}
 	idx := t.compileContainer(
 		v.children,
 		v.gap,
@@ -2502,7 +2532,7 @@ func (t *Template) compileVBoxC(v VBoxC, parent int16, depth int, elemBase unsaf
 		f,
 		v.border,
 		v.title,
-		v.borderFG,
+		bfg,
 		v.borderBG,
 		v.fill,
 		v.inheritStyle,
@@ -3598,8 +3628,8 @@ func (t *Template) computeIntrinsicWidth(idx int16) int16 {
 		}
 
 		// Add border
-		if op.Border.Horizontal != 0 {
-			intrinsicW += 2
+		if op.Border.HasBorder() {
+			intrinsicW += op.Border.PadH()
 		}
 
 		// Add margin + padding
@@ -3840,8 +3870,8 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 func (t *Template) distributeWidthsToChildren(idx int16, op *Op, geom *Geom, elemBase unsafe.Pointer) {
 	// Calculate content width (subtract margin + padding + border)
 	contentW := geom.W - op.marginH() - op.paddingH()
-	if op.Border.Horizontal != 0 {
-		contentW -= 2
+	if op.Border.HasBorder() {
+		contentW -= op.Border.PadH()
 	}
 
 	if op.IsRow {
@@ -4081,7 +4111,7 @@ func (t *Template) annotateHRuleExtensions(hboxIdx int16, hboxOp *Op, availW int
 	// the VRule endpoint cap will produce ├/┤ via buffer merge instead.
 	if hboxOp.Parent >= 0 && int(hboxOp.Parent) < len(t.ops) {
 		parentOp := &t.ops[hboxOp.Parent]
-		if parentOp.Kind == OpContainer && parentOp.Border.Horizontal != 0 {
+		if parentOp.Kind == OpContainer && parentOp.Border.HasBorder() {
 			var leftmost, rightmost *childInfo
 			for i := range children {
 				c := &children[i]
@@ -4169,10 +4199,7 @@ func (t *Template) stampVRuleXPair(containerIdx int16, delta1, delta2 int16) {
 // annotateVRuleExtensions finds HRule children of the VBox at idx and, for each,
 // walks sibling container subtrees to set RuleExtendTop/Bot on VRules with RuleExtend=true.
 func (t *Template) annotateVRuleExtensions(idx int16, op *Op, totalH int16) {
-	contentOffY := op.Margin[0]
-	if op.Border.Horizontal != 0 {
-		contentOffY++
-	}
+	contentOffY := op.Margin[0] + op.Border.PadTop()
 
 	type childInfo struct {
 		idx    int16
@@ -4196,7 +4223,7 @@ func (t *Template) annotateVRuleExtensions(idx int16, op *Op, totalH int16) {
 		}
 	}
 
-	hasBorder := op.Border.Horizontal != 0
+	hasBorder := op.Border.HasBorder()
 
 	for _, c := range children {
 		childOp := &t.ops[c.idx]
@@ -4522,16 +4549,14 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 	// Content area offset for margin + border + padding
 	contentOffX := op.Margin[3] // left margin
 	contentOffY := op.Margin[0] // top margin
-	if op.Border.Horizontal != 0 {
-		contentOffX += 1
-		contentOffY += 1
-	}
+	contentOffX += op.Border.PadLeft()
+	contentOffY += op.Border.PadTop()
 	contentOffX += op.Padding[3] // left padding
 	contentOffY += op.Padding[0] // top padding
 
 	availW := geom.W - op.marginH() - op.paddingH()
-	if op.Border.Horizontal != 0 {
-		availW -= 2
+	if op.Border.HasBorder() {
+		availW -= op.Border.PadH()
 	}
 
 	if op.IsRow {
@@ -4708,8 +4733,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 		}
 
 		geom.H = maxH
-		if op.Border.Horizontal != 0 {
-			geom.H += 2
+		if op.Border.HasBorder() {
+			geom.H += op.Border.PadV()
 		}
 		geom.H += op.marginV() + op.paddingV()
 	} else {
@@ -4829,8 +4854,8 @@ func (t *Template) layoutContainer(idx int16, op *Op, geom *Geom) {
 		t.annotateVRuleExtensions(idx, op, cursor)
 
 		geom.H = cursor
-		if op.Border.Horizontal != 0 {
-			geom.H += 2
+		if op.Border.HasBorder() {
+			geom.H += op.Border.PadV()
 		}
 		geom.H += op.marginV() + op.paddingV()
 	}
@@ -4889,8 +4914,8 @@ func (t *Template) distributeFlexGrow(rootH int16) {
 func (t *Template) stretchRowChildren(idx int16, op *Op) {
 	geom := &t.geom[idx]
 	availH := geom.H - op.marginV() - op.paddingV()
-	if op.Border.Horizontal != 0 {
-		availH -= 2
+	if op.Border.HasBorder() {
+		availH -= op.Border.PadV()
 	}
 
 	// Stretch each child to fill the row height
@@ -4952,28 +4977,28 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 	if op.flexGrow() > 0 && geom.H > 0 {
 		// This container is a flex child - use its own height (already computed)
 		availH = geom.H - op.marginV() - op.paddingV()
-		if op.Border.Horizontal != 0 {
-			availH -= 2 // Subtract own border from available content space
+		if op.Border.HasBorder() {
+			availH -= op.Border.PadV()
 		}
 	} else if op.Parent >= 0 {
 		parentGeom := &t.geom[op.Parent]
 		parentOp := &t.ops[op.Parent]
 		availH = parentGeom.H - parentOp.marginV() - parentOp.paddingV()
-		if parentOp.Border.Horizontal != 0 {
-			availH -= 2 // Account for parent border
+		if parentOp.Border.HasBorder() {
+			availH -= parentOp.Border.PadV()
 		}
 	} else {
 		availH = rootH - op.marginV() - op.paddingV()
-		if op.Border.Horizontal != 0 {
-			availH -= 2 // subtract own border from available content space
+		if op.Border.HasBorder() {
+			availH -= op.Border.PadV()
 		}
 	}
 
 	// If this container has explicit height, use that
 	if h := op.height(); h > 0 {
 		availH = h - op.marginV() - op.paddingV()
-		if op.Border.Horizontal != 0 {
-			availH -= 2
+		if op.Border.HasBorder() {
+			availH -= op.Border.PadV()
 		}
 	}
 
@@ -5046,10 +5071,7 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 		}
 
 		// Recalculate child positions with new heights
-		contentOffY := int16(op.Margin[0])
-		if op.Border.Horizontal != 0 {
-			contentOffY += 1
-		}
+		contentOffY := int16(op.Margin[0]) + op.Border.PadTop()
 		cursor := int16(0)
 		firstChild := true
 
@@ -5080,8 +5102,8 @@ func (t *Template) distributeFlexInCol(idx int16, op *Op, rootH int16) {
 
 		// Update container height to match available
 		geom.H = availH
-		if op.Border.Horizontal != 0 {
-			geom.H += 2
+		if op.Border.HasBorder() {
+			geom.H += op.Border.PadV()
 		}
 	}
 }
@@ -5653,7 +5675,7 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 		}
 
 		// Draw border if present
-		if op.Border.Horizontal != 0 {
+		if op.Border.HasBorder() {
 			style := DefaultStyle()
 			if op.BorderFG != nil {
 				style.FG = *op.BorderFG
@@ -5668,7 +5690,9 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 			} else if fillColor.Mode != ColorDefault {
 				style.BG = fillColor
 			}
-			buf.DrawBorder(int(boxX), int(boxY), int(boxW), int(boxH), op.Border, style)
+			if style.FG.Mode != ColorDefault || op.BorderFG == nil {
+				buf.DrawBorder(int(boxX), int(boxY), int(boxW), int(boxH), op.Border, style)
+			}
 
 			if op.Title != "" {
 				titleTransform := TransformNone
@@ -5678,7 +5702,7 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 				titleMaxW := int(boxW) - 2
 				titleX := int(boxX) + 1
 				if titleMaxW > 0 {
-					buf.SetFast(titleX, int(boxY), Cell{Rune: op.Border.Horizontal, Style: style})
+					buf.SetFast(titleX, int(boxY), Cell{Rune: op.Border.topChar(), Style: style})
 					titleX++
 					buf.SetFast(titleX, int(boxY), Cell{Rune: ' ', Style: style})
 					titleX++
@@ -5699,16 +5723,14 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 
 		// Calculate content width (accounting for margin + border)
 		contentW := boxW
-		if op.Border.Horizontal != 0 {
-			contentW -= 2
+		if op.Border.HasBorder() {
+			contentW -= op.Border.PadH()
 		}
 
 		// Set vertical clip for children (content area bottom)
 		oldClipMaxY := t.clipMaxY
 		contentBottom := boxY + boxH
-		if op.Border.Horizontal != 0 {
-			contentBottom -= 1 // don't render into bottom border
-		}
+		contentBottom -= op.Border.PadBottom()
 		if t.clipMaxY == 0 || contentBottom < t.clipMaxY {
 			t.clipMaxY = contentBottom
 		}
@@ -6128,7 +6150,7 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 		}
 
 		// Draw border if present
-		if op.Border.Horizontal != 0 {
+		if op.Border.HasBorder() {
 			style := DefaultStyle()
 			if op.BorderFG != nil {
 				style.FG = *op.BorderFG
@@ -6143,7 +6165,9 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 			} else if fillColor.Mode != ColorDefault {
 				style.BG = fillColor
 			}
-			buf.DrawBorder(int(boxX), int(boxY), int(boxW), int(boxH), op.Border, style)
+			if style.FG.Mode != ColorDefault || op.BorderFG == nil {
+				buf.DrawBorder(int(boxX), int(boxY), int(boxW), int(boxH), op.Border, style)
+			}
 
 			if op.Title != "" {
 				titleTransform := TransformNone
@@ -6153,7 +6177,7 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 				titleMaxW := int(boxW) - 2
 				titleX := int(boxX) + 1
 				if titleMaxW > 0 {
-					buf.SetFast(titleX, int(boxY), Cell{Rune: op.Border.Horizontal, Style: style})
+					buf.SetFast(titleX, int(boxY), Cell{Rune: op.Border.topChar(), Style: style})
 					titleX++
 					buf.SetFast(titleX, int(boxY), Cell{Rune: ' ', Style: style})
 					titleX++
@@ -6174,8 +6198,8 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 
 		// Calculate content width (accounting for margin + border)
 		contentW := boxW
-		if op.Border.Horizontal != 0 {
-			contentW -= 2
+		if op.Border.HasBorder() {
+			contentW -= op.Border.PadH()
 		}
 
 		// Recurse into children with this container's position as their origin
@@ -6343,7 +6367,13 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 	var defaultStyle, selectedStyle, markerBaseStyle Style
 	if ext.listPtr != nil {
 		defaultStyle = ext.listPtr.Style
+		if ext.listPtr.StylePtr != nil {
+			defaultStyle = *ext.listPtr.StylePtr
+		}
 		selectedStyle = ext.listPtr.SelectedStyle
+		if ext.listPtr.SelectedStylePtr != nil {
+			selectedStyle = *ext.listPtr.SelectedStylePtr
+		}
 		markerBaseStyle = ext.listPtr.MarkerStyle
 	}
 
@@ -6407,14 +6437,10 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 					if ext.iterTmpl.rowBG.Mode == 0 && defaultStyle.BG.Mode != 0 {
 						ext.iterTmpl.rowBG = defaultStyle.BG
 					}
-				} else if defaultStyle.BG.Mode != 0 {
-					ext.iterTmpl.rowBG = defaultStyle.BG
-					ext.iterTmpl.rowFG = Color{}
-					ext.iterTmpl.rowAttr = 0
 				} else {
-					ext.iterTmpl.rowBG = Color{}
-					ext.iterTmpl.rowFG = Color{}
-					ext.iterTmpl.rowAttr = 0
+					ext.iterTmpl.rowBG = defaultStyle.BG
+					ext.iterTmpl.rowFG = defaultStyle.FG
+					ext.iterTmpl.rowAttr = defaultStyle.Attr
 				}
 				t.renderSubTemplate(buf, ext.iterTmpl, contentX, int16(y), contentW, elemPtr)
 			} else {
@@ -6440,8 +6466,14 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 							textStyle.FG = selectedStyle.FG
 						}
 						textStyle.Attr = textStyle.Attr | selectedStyle.Attr
-					} else if textStyle.BG.Mode == 0 && defaultStyle.BG.Mode != 0 {
-						textStyle.BG = defaultStyle.BG
+					} else {
+						if textStyle.BG.Mode == 0 && defaultStyle.BG.Mode != 0 {
+							textStyle.BG = defaultStyle.BG
+						}
+						if textStyle.FG.Mode == 0 && defaultStyle.FG.Mode != 0 {
+							textStyle.FG = defaultStyle.FG
+						}
+						textStyle.Attr = textStyle.Attr | defaultStyle.Attr
 					}
 					effStyle := t.effectiveStyle(textStyle)
 					raw := ext.resolve(elemPtr)

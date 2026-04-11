@@ -19,6 +19,9 @@ type Buffer struct {
 	// Row-level dirty tracking for efficient flush
 	dirtyRows []bool
 	allDirty  bool // true after Clear() - all rows need checking
+
+	// Default style for cleared cells (set via SetDefaultStyle)
+	defaultStyle Style
 }
 
 // emptyBufferCache is a pre-filled buffer of empty cells for fast clearing via copy()
@@ -86,6 +89,7 @@ func (b *Buffer) Set(x, y int, c Cell) {
 	if !b.InBounds(x, y) {
 		return
 	}
+	c.Style = b.applyDefault(c.Style)
 	idx := b.index(x, y)
 	existing := b.cells[idx]
 
@@ -109,6 +113,7 @@ func (b *Buffer) SetFast(x, y int, c Cell) {
 	if y < 0 || y >= b.height || x < 0 || x >= b.width {
 		return
 	}
+	c.Style = b.applyDefault(c.Style)
 	b.cells[y*b.width+x] = c
 	if y > b.dirtyMaxY {
 		b.dirtyMaxY = y
@@ -199,6 +204,8 @@ func (b *Buffer) WriteStringFast(x, y int, s string, style Style, maxWidth int) 
 	}
 	b.dirtyRows[y] = true
 
+	style = b.applyDefault(style)
+
 	base := y * b.width
 	written := 0
 	for _, r := range s {
@@ -211,6 +218,16 @@ func (b *Buffer) WriteStringFast(x, y int, s string, style Style, maxWidth int) 
 		x++
 		written++
 	}
+}
+
+func (b *Buffer) applyDefault(s Style) Style {
+	if s.FG.Mode == ColorDefault && b.defaultStyle.FG.Mode != ColorDefault {
+		s.FG = b.defaultStyle.FG
+	}
+	if s.BG.Mode == ColorDefault && b.defaultStyle.BG.Mode != ColorDefault {
+		s.BG = b.defaultStyle.BG
+	}
+	return s
 }
 
 // WriteSpans writes multiple styled text spans sequentially.
@@ -228,6 +245,7 @@ func (b *Buffer) WriteSpans(x, y int, spans []Span, maxWidth int) {
 	base := y * b.width
 	written := 0
 	for _, span := range spans {
+		ss := b.applyDefault(span.Style)
 		for _, r := range span.Text {
 			rw := runewidth.RuneWidth(r)
 			if rw == 0 {
@@ -237,10 +255,10 @@ func (b *Buffer) WriteSpans(x, y int, spans []Span, maxWidth int) {
 				return
 			}
 			if x >= 0 {
-				b.cells[base+x] = Cell{Rune: r, Style: span.Style}
+				b.cells[base+x] = Cell{Rune: r, Style: ss}
 				// for double-width chars, fill second cell with placeholder
 				if rw == 2 && x+1 < b.width {
-					b.cells[base+x+1] = Cell{Rune: 0, Style: span.Style}
+					b.cells[base+x+1] = Cell{Rune: 0, Style: ss}
 				}
 			}
 			x += rw
@@ -497,21 +515,26 @@ func (b *Buffer) Fill(c Cell) {
 // Uses copy() from a cached empty buffer.
 func (b *Buffer) Clear() {
 	size := len(b.cells)
+	s := b.defaultStyle
 
-	// Grow cache if needed (one-time cost)
-	if len(emptyBufferCache) < size {
-		emptyBufferCache = make([]Cell, size)
-		empty := EmptyCell()
-		for i := range emptyBufferCache {
-			emptyBufferCache[i] = empty
+	if s.FG.Mode == ColorDefault && s.BG.Mode == ColorDefault && s.Attr == 0 {
+		if len(emptyBufferCache) < size {
+			emptyBufferCache = make([]Cell, size)
+			empty := EmptyCell()
+			for i := range emptyBufferCache {
+				emptyBufferCache[i] = empty
+			}
+		}
+		copy(b.cells, emptyBufferCache[:size])
+	} else {
+		base := Cell{Rune: ' ', Style: s}
+		for i := range b.cells {
+			b.cells[i] = base
 		}
 	}
 
-	// Fast path: copy uses optimized memmove
-	copy(b.cells, emptyBufferCache[:size])
 	b.dirtyMaxY = 0
 	b.allDirty = true
-	// Clear individual row flags (allDirty takes precedence)
 	for i := range b.dirtyRows {
 		b.dirtyRows[i] = false
 	}
@@ -563,16 +586,22 @@ func (b *Buffer) ClearDirty() {
 		size = len(b.cells)
 	}
 
-	// Ensure cache is big enough
-	if len(emptyBufferCache) < size {
-		emptyBufferCache = make([]Cell, len(b.cells))
-		empty := EmptyCell()
-		for i := range emptyBufferCache {
-			emptyBufferCache[i] = empty
+	s := b.defaultStyle
+	if s.FG.Mode == ColorDefault && s.BG.Mode == ColorDefault && s.Attr == 0 {
+		if len(emptyBufferCache) < size {
+			emptyBufferCache = make([]Cell, len(b.cells))
+			empty := EmptyCell()
+			for i := range emptyBufferCache {
+				emptyBufferCache[i] = empty
+			}
+		}
+		copy(b.cells[:size], emptyBufferCache[:size])
+	} else {
+		base := Cell{Rune: ' ', Style: s}
+		for i := 0; i < size; i++ {
+			b.cells[i] = base
 		}
 	}
-
-	copy(b.cells[:size], emptyBufferCache[:size])
 
 	// Mark cleared rows as dirty (content changed) and reset tracking
 	for y := 0; y <= b.dirtyMaxY && y < b.height; y++ {
@@ -611,6 +640,7 @@ func (b *Buffer) ClearLineWithStyle(y int, style Style) {
 // Uses direct slice writes (no border merge) for non-border cells,
 // falls back to Set() only when the cell is a border character.
 func (b *Buffer) FillRect(x, y, width, height int, c Cell) {
+	c.Style = b.applyDefault(c.Style)
 	// fast path: non-border fills bypass Set() entirely
 	if c.Rune < boxDrawingMin || c.Rune > boxDrawingMax {
 		for dy := 0; dy < height; dy++ {
@@ -808,6 +838,8 @@ func mergeBorders(existing, new rune) (rune, bool) {
 }
 
 // BorderStyle defines the characters used for drawing borders.
+// Top/Bottom override Horizontal for their respective edge.
+// Zero-value runes are skipped, enabling partial borders.
 type BorderStyle struct {
 	Horizontal  rune
 	Vertical    rune
@@ -815,7 +847,85 @@ type BorderStyle struct {
 	TopRight    rune
 	BottomLeft  rune
 	BottomRight rune
+	Top         rune // overrides Horizontal for top edge
+	Bottom      rune // overrides Horizontal for bottom edge
+	Left        rune // overrides Vertical for left edge
+	Right       rune // overrides Vertical for right edge
 }
+
+func (b BorderStyle) topChar() rune {
+	if b.Top != 0 {
+		return b.Top
+	}
+	return b.Horizontal
+}
+
+func (b BorderStyle) bottomChar() rune {
+	if b.Bottom != 0 {
+		return b.Bottom
+	}
+	return b.Horizontal
+}
+
+func (b BorderStyle) HasTop() bool    { return b.topChar() != 0 }
+func (b BorderStyle) HasBottom() bool { return b.bottomChar() != 0 }
+func (b BorderStyle) leftChar() rune {
+	if b.Left != 0 {
+		return b.Left
+	}
+	return b.Vertical
+}
+
+func (b BorderStyle) rightChar() rune {
+	if b.Right != 0 {
+		return b.Right
+	}
+	return b.Vertical
+}
+
+func (b BorderStyle) HasLeft() bool  { return b.leftChar() != 0 }
+func (b BorderStyle) HasRight() bool { return b.rightChar() != 0 }
+
+// PadTop returns 1 if the top edge is drawn, 0 otherwise.
+func (b BorderStyle) PadTop() int16 {
+	if b.HasTop() {
+		return 1
+	}
+	return 0
+}
+
+// PadBottom returns 1 if the bottom edge is drawn, 0 otherwise.
+func (b BorderStyle) PadBottom() int16 {
+	if b.HasBottom() {
+		return 1
+	}
+	return 0
+}
+
+// PadLeft returns 1 if the left edge is drawn, 0 otherwise.
+func (b BorderStyle) PadLeft() int16 {
+	if b.HasLeft() {
+		return 1
+	}
+	return 0
+}
+
+// PadRight returns 1 if the right edge is drawn, 0 otherwise.
+func (b BorderStyle) PadRight() int16 {
+	if b.HasRight() {
+		return 1
+	}
+	return 0
+}
+
+// PadH returns total horizontal border padding (left + right).
+func (b BorderStyle) PadH() int16 { return b.PadLeft() + b.PadRight() }
+
+// PadV returns total vertical border padding (top + bottom).
+func (b BorderStyle) PadV() int16 { return b.PadTop() + b.PadBottom() }
+
+// HasBorder returns true if any edge is drawn.
+func (b BorderStyle) HasBorder() bool { return b.HasTop() || b.HasBottom() || b.HasLeft() || b.HasRight() }
 
 // Standard border styles.
 var (
@@ -843,30 +953,91 @@ var (
 		BottomLeft:  BoxDoubleBottomLeft,
 		BottomRight: BoxDoubleBottomRight,
 	}
+	BorderSoft = BorderStyle{
+		Top:         '▀',
+		Bottom:      '▄',
+		Left:        '▌',
+		Right:       '▐',
+		TopLeft:     '▛',
+		TopRight:    '▜',
+		BottomLeft:  '▙',
+		BottomRight: '▟',
+	}
 )
 
 // DrawBorder draws a border around the given rectangle.
+// Zero-value runes are skipped, enabling partial borders.
 func (b *Buffer) DrawBorder(x, y, width, height int, border BorderStyle, style Style) {
-	if width < 2 || height < 2 {
+	if width < 1 || height < 1 {
 		return
 	}
 
-	// Corners
-	b.Set(x, y, NewCell(border.TopLeft, style))
-	b.Set(x+width-1, y, NewCell(border.TopRight, style))
-	b.Set(x, y+height-1, NewCell(border.BottomLeft, style))
-	b.Set(x+width-1, y+height-1, NewCell(border.BottomRight, style))
+	topY := y
+	bottomY := y + height - 1
+	rightX := x + width - 1
 
-	// Horizontal lines
-	for i := 1; i < width-1; i++ {
-		b.Set(x+i, y, NewCell(border.Horizontal, style))
-		b.Set(x+i, y+height-1, NewCell(border.Horizontal, style))
+	// corners
+	if border.TopLeft != 0 && border.HasTop() && border.HasLeft() {
+		b.Set(x, topY, NewCell(border.TopLeft, style))
+	}
+	if border.TopRight != 0 && border.HasTop() && border.HasRight() {
+		b.Set(rightX, topY, NewCell(border.TopRight, style))
+	}
+	if border.BottomLeft != 0 && border.HasBottom() && border.HasLeft() && bottomY > topY {
+		b.Set(x, bottomY, NewCell(border.BottomLeft, style))
+	}
+	if border.BottomRight != 0 && border.HasBottom() && border.HasRight() && bottomY > topY {
+		b.Set(rightX, bottomY, NewCell(border.BottomRight, style))
 	}
 
-	// Vertical lines
-	for i := 1; i < height-1; i++ {
-		b.Set(x, y+i, NewCell(border.Vertical, style))
-		b.Set(x+width-1, y+i, NewCell(border.Vertical, style))
+	// top edge
+	if tc := border.topChar(); tc != 0 {
+		startX := x
+		if border.TopLeft != 0 && border.HasLeft() {
+			startX = x + 1
+		}
+		endX := x + width
+		if border.TopRight != 0 && border.HasRight() {
+			endX = rightX
+		}
+		for i := startX; i < endX; i++ {
+			b.Set(i, topY, NewCell(tc, style))
+		}
+	}
+
+	// bottom edge
+	if bc := border.bottomChar(); bc != 0 && bottomY > topY {
+		startX := x
+		if border.BottomLeft != 0 && border.HasLeft() {
+			startX = x + 1
+		}
+		endX := x + width
+		if border.BottomRight != 0 && border.HasRight() {
+			endX = rightX
+		}
+		for i := startX; i < endX; i++ {
+			b.Set(i, bottomY, NewCell(bc, style))
+		}
+	}
+
+	// left/right vertical edges
+	startY := topY + 1
+	if !border.HasTop() {
+		startY = topY
+	}
+	endY := bottomY
+	if !border.HasBottom() {
+		endY = bottomY + 1
+	}
+	if lc := border.leftChar(); lc != 0 {
+		for i := startY; i < endY; i++ {
+			b.Set(x, i, NewCell(lc, style))
+		}
+	}
+	if rc := border.rightChar(); rc != 0 {
+		for i := startY; i < endY; i++ {
+			b.Set(rightX, i, NewCell(rc, style))
+		}
 	}
 }
 

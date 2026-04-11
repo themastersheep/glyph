@@ -68,6 +68,9 @@ type App struct {
 	cursorColor      Color
 	cursorColorSet   bool
 
+	// default style for all cells (set via SetDefaultStyle)
+	defaultStyle Style
+
 	// Resize callback
 	onResize func(width, height int)
 
@@ -258,6 +261,12 @@ func (a *App) SetView(view any) *App {
 	} else if a.pool.Width() != size.Width || a.pool.Height() != size.Height {
 		a.pool.Resize(size.Width, size.Height)
 	}
+	if a.defaultStyle.FG.Mode != ColorDefault || a.defaultStyle.BG.Mode != ColorDefault {
+		for _, buf := range a.pool.buffers {
+			buf.defaultStyle = a.defaultStyle
+			buf.Clear()
+		}
+	}
 	return a
 }
 
@@ -377,6 +386,11 @@ func (a *App) View(name string, view any) *ViewBuilder {
 	if a.pool == nil {
 		size := a.screen.Size()
 		a.pool = NewBufferPool(size.Width, size.Height)
+		if a.defaultStyle.FG.Mode != ColorDefault || a.defaultStyle.BG.Mode != ColorDefault {
+			for _, buf := range a.pool.buffers {
+				buf.defaultStyle = a.defaultStyle
+			}
+		}
 	}
 
 	// Compile template and create router for this view
@@ -567,6 +581,17 @@ func (a *App) HideCursor() {
 
 // SetCursorColor sets the cursor color using OSC 12 escape sequence.
 // This changes the actual cursor color in supporting terminals.
+// SetDefaultStyle sets the default style for all cells. Any cell not explicitly
+// styled will use this FG/BG instead of the terminal default.
+func (a *App) SetDefaultStyle(s Style) {
+	a.defaultStyle = s
+	if a.pool != nil {
+		for _, buf := range a.pool.buffers {
+			buf.defaultStyle = s
+		}
+	}
+}
+
 func (a *App) SetCursorColor(c Color) {
 	a.cursorColor = c
 	a.cursorColorSet = true
@@ -898,6 +923,12 @@ func (a *App) run(startView string) error {
 			return err
 		}
 		defer a.screen.ExitRawMode()
+		// if a default style is set, paint the terminal background immediately
+		// before the first frame renders (avoids flash of terminal default colours)
+		if a.defaultStyle.BG.Mode != ColorDefault {
+			bg := a.defaultStyle.BG
+			fmt.Fprintf(a.screen.writer, "\x1b[48;2;%d;%d;%dm\x1b[2J\x1b[H", bg.R, bg.G, bg.B)
+		}
 	}
 
 	// Handle resize
