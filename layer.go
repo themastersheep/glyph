@@ -36,6 +36,9 @@ type Layer struct {
 	// AlwaysRender causes Render to fire every frame, not just on width changes.
 	// Used by components that track external pointer mutations (e.g. TextViewC).
 	AlwaysRender bool
+
+	// defaultStyle inherited from the app for buffer creation
+	defaultStyle Style
 }
 
 // NewLayer creates a new empty layer.

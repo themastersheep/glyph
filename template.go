@@ -5739,6 +5739,9 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 			ext.ptr.SetViewport(layerW, int(contentH))
 			ext.ptr.screenX = int(absX)
 			ext.ptr.screenY = int(absY)
+			if t.app != nil {
+				ext.ptr.defaultStyle = t.app.defaultStyle
+			}
 			ext.ptr.prepare()
 			ext.ptr.blit(buf, int(absX), int(absY), layerW, int(contentH))
 
@@ -6234,6 +6237,9 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 			ext.ptr.SetViewport(layerW, int(contentH))
 			ext.ptr.screenX = int(absX)
 			ext.ptr.screenY = int(absY)
+			if sub.app != nil {
+				ext.ptr.defaultStyle = sub.app.defaultStyle
+			}
 			ext.ptr.prepare()
 			ext.ptr.blit(buf, int(absX), int(absY), layerW, int(contentH))
 

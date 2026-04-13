@@ -1,13 +1,17 @@
 package glyph
 
-import "unicode/utf8"
+import (
+	"unicode/utf8"
+	"unsafe"
+)
 
 type TextViewC struct {
 	content          *string
 	layer            *Layer
 	grow             float32
 	margin           [4]int16
-	lastContent      string
+	lastDataPtr      unsafe.Pointer
+	lastLen          int
 	lastWidth        int
 	declaredBindings []binding
 	flexGrowPtr      *float32
@@ -91,10 +95,12 @@ func (tv *TextViewC) sync() {
 	if w <= 0 {
 		return
 	}
-	if c == tv.lastContent && w == tv.lastWidth {
+	dataPtr := unsafe.StringData(c)
+	if w == tv.lastWidth && len(c) == tv.lastLen && unsafe.Pointer(dataPtr) == tv.lastDataPtr {
 		return
 	}
-	tv.lastContent = c
+	tv.lastDataPtr = unsafe.Pointer(dataPtr)
+	tv.lastLen = len(c)
 	tv.lastWidth = w
 
 	lines := wrapText(c, w)
@@ -103,6 +109,8 @@ func (tv *TextViewC) sync() {
 	}
 	h := max(len(lines), tv.layer.ViewportHeight())
 	buf := NewBuffer(w, h)
+	buf.defaultStyle = tv.layer.defaultStyle
+	buf.Clear()
 	for i, line := range lines {
 		buf.WriteStringFast(0, i, line, Style{}, w)
 	}
