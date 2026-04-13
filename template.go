@@ -6426,11 +6426,17 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 	// height-aware windowing: determine visible item range using per-item heights
 	startIdx := 0
 	endIdx := sliceHdr.Len
+	if endIdx > len(ext.geoms) {
+		endIdx = len(ext.geoms)
+	}
 	if ext.listPtr != nil && ext.listPtr.MaxVisible > 0 {
 		startIdx = ext.listPtr.offset
 		endIdx = startIdx + ext.listPtr.MaxVisible
 		if endIdx > sliceHdr.Len {
 			endIdx = sliceHdr.Len
+		}
+		if endIdx > len(ext.geoms) {
+			endIdx = len(ext.geoms)
 		}
 	}
 
