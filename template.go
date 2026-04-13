@@ -100,6 +100,9 @@ type Template struct {
 	// App reference for jump mode coordination
 	app *App
 
+	// per-item index for ForEach/SelectionList (reset per iteration, used by per-item tweens)
+	itemIndex int
+
 	// row styling for SelectionList selected rows (merged with cell styles)
 	rowBG   Color
 	rowFG   Color
@@ -491,7 +494,7 @@ func (t *Template) compileDynColor(v any, elemBase unsafe.Pointer, elemSize uint
 	case switchNodeInterface:
 		return t.compileSwitchColor(c)
 	case tweenNode:
-		return t.compileTweenColor(c)
+		return t.compileTweenColor(c, elemBase, elemSize)
 	}
 	return nil
 }
@@ -503,7 +506,7 @@ func (t *Template) compileDynStyle(v any, elemBase unsafe.Pointer, elemSize uint
 	case conditionNode:
 		return t.compileCondStyle(c, elemBase, elemSize)
 	case tweenNode:
-		return t.compileTweenStyle(c)
+		return t.compileTweenStyle(c, elemBase, elemSize)
 	}
 	return nil
 }
@@ -547,12 +550,14 @@ func (t *Template) compileCondColor(cond conditionNode, elemBase unsafe.Pointer,
 	thenVal := cond.getThen()
 	elseVal := cond.getElse()
 
-	// recursively compile nested conditions
+	// recursively compile nested conditions and reactive pointers
 	resolveColor := func(v any) func() Color {
 		switch nested := v.(type) {
 		case conditionNode:
 			ptr := t.compileCondColor(nested, elemBase, elemSize)
 			return func() Color { return *ptr }
+		case *Color:
+			return func() Color { return *nested }
 		default:
 			c := anyToColor(v)
 			return func() Color { return c }
@@ -605,6 +610,22 @@ func (t *Template) compileCondStyle(cond conditionNode, elemBase unsafe.Pointer,
 	thenVal := cond.getThen()
 	elseVal := cond.getElse()
 
+	// recursively compile nested conditions and reactive pointers
+	resolveStyle := func(v any) func() Style {
+		switch nested := v.(type) {
+		case conditionNode:
+			ptr := t.compileCondStyle(nested, elemBase, elemSize)
+			return func() Style { return *ptr }
+		case *Style:
+			return func() Style { return *nested }
+		default:
+			s := anyToStyle(v)
+			return func() Style { return s }
+		}
+	}
+	thenFn := resolveStyle(thenVal)
+	elseFn := resolveStyle(elseVal)
+
 	// check if the condition pointer is within a ForEach element
 	inForEach := false
 	if elemBase != nil && elemSize > 0 {
@@ -617,18 +638,16 @@ func (t *Template) compileCondStyle(cond conditionNode, elemBase unsafe.Pointer,
 	}
 
 	if inForEach {
-		// per-item eval — uses evaluateWithBase with the current elemBase
-		// initial eval uses the dummy pointer (elemBase not set yet during compilation)
 		if cond.evaluate() {
-			*storage = anyToStyle(thenVal)
+			*storage = thenFn()
 		} else {
-			*storage = anyToStyle(elseVal)
+			*storage = elseFn()
 		}
 		eval := func() {
 			if cond.evaluateWithBase(t.elemBase) {
-				*storage = anyToStyle(thenVal)
+				*storage = thenFn()
 			} else {
-				*storage = anyToStyle(elseVal)
+				*storage = elseFn()
 			}
 		}
 		t.itemEvals = append(t.itemEvals, eval)
@@ -637,9 +656,9 @@ func (t *Template) compileCondStyle(cond conditionNode, elemBase unsafe.Pointer,
 		root := t.evalRoot()
 		eval := func() {
 			if cond.evaluate() {
-				*storage = anyToStyle(thenVal)
+				*storage = thenFn()
 			} else {
-				*storage = anyToStyle(elseVal)
+				*storage = elseFn()
 			}
 		}
 		eval()
@@ -1024,9 +1043,23 @@ func (t *Template) resolveTweenTargetInt8(target any) *int8 {
 	return storage
 }
 
-func (t *Template) compileTweenColor(tw tweenNode) *Color {
+type perItemColorState struct {
+	lastTarget Color
+	startVal   Color
+	current    Color
+	startTime  time.Time
+}
+
+type perItemStyleState struct {
+	lastTarget Style
+	startVal   Style
+	current    Style
+	startTime  time.Time
+}
+
+func (t *Template) compileTweenColor(tw tweenNode, elemBase unsafe.Pointer, elemSize uintptr) *Color {
 	root := t.evalRoot()
-	watchPtr := t.resolveTweenTargetColor(tw.getTarget())
+	watchPtr := t.resolveTweenTargetColor(tw.getTarget(), elemBase, elemSize)
 	storage := new(Color)
 	*storage = *watchPtr
 	durVal := tw.getTweenDuration()
@@ -1034,61 +1067,106 @@ func (t *Template) compileTweenColor(tw tweenNode) *Color {
 	onComplete := tw.getTweenOnComplete()
 	ease := tw.getTweenEasing()
 
-	lastTarget := *watchPtr
-	startVal := *watchPtr
-	var startTime time.Time
+	// detect ForEach context
+	inForEach := elemBase != nil && elemSize > 0
 
-	needsFirstFrame := false
-	if from := tw.getTweenFrom(); from != nil {
-		if c, ok := from.(Color); ok {
-			*storage = c
-			startVal = c
-			needsFirstFrame = true
-		}
-	}
-
-	root.evals = append(root.evals, func() {
-		dur := durVal
-		if durPtr != nil {
-			dur = *durPtr
-		}
-		target := *watchPtr
-		now := root.frameTime
-		if needsFirstFrame {
-			startVal = *storage
-			lastTarget = target
-			startTime = now
-			needsFirstFrame = false
-		} else if target != lastTarget {
-			startVal = *storage
-			lastTarget = target
-			startTime = now
-		}
-		if startTime.IsZero() {
-			return
-		}
-		elapsed := now.Sub(startTime)
-		if elapsed >= dur {
-			*storage = target
-			startTime = time.Time{}
-			if onComplete != nil {
-				onComplete()
+	if inForEach {
+		items := make(map[unsafe.Pointer]*perItemColorState)
+		t.itemEvals = append(t.itemEvals, func() {
+			dur := durVal
+			if durPtr != nil {
+				dur = *durPtr
 			}
-			return
+			key := t.elemBase
+			target := *watchPtr
+			now := root.frameTime
+			state, ok := items[key]
+			if !ok {
+				state = &perItemColorState{lastTarget: target, current: target}
+				items[key] = state
+			}
+			if target != state.lastTarget {
+				state.startVal = state.current
+				state.lastTarget = target
+				state.startTime = now
+			}
+			if state.startTime.IsZero() {
+				state.current = target
+				*storage = target
+				return
+			}
+			elapsed := now.Sub(state.startTime)
+			if elapsed >= dur {
+				state.current = target
+				*storage = target
+				state.startTime = time.Time{}
+				return
+			}
+			progress := float64(elapsed) / float64(dur)
+			if ease != nil {
+				progress = ease(progress)
+			}
+			state.current = lerpColor(state.startVal, target, progress)
+			*storage = state.current
+			root.animating = true
+		})
+	} else {
+		lastTarget := *watchPtr
+		startVal := *watchPtr
+		var startTime time.Time
+
+		needsFirstFrame := false
+		if from := tw.getTweenFrom(); from != nil {
+			if c, ok := from.(Color); ok {
+				*storage = c
+				startVal = c
+				needsFirstFrame = true
+			}
 		}
-		progress := float64(elapsed) / float64(dur)
-		if ease != nil {
-			progress = ease(progress)
-		}
-		*storage = lerpColor(startVal, target, progress)
-		root.animating = true
-	})
+
+		root.evals = append(root.evals, func() {
+			dur := durVal
+			if durPtr != nil {
+				dur = *durPtr
+			}
+			target := *watchPtr
+			now := root.frameTime
+			if needsFirstFrame {
+				startVal = *storage
+				lastTarget = target
+				startTime = now
+				needsFirstFrame = false
+			} else if target != lastTarget {
+				startVal = *storage
+				lastTarget = target
+				startTime = now
+			}
+			if startTime.IsZero() {
+				return
+			}
+			elapsed := now.Sub(startTime)
+			if elapsed >= dur {
+				*storage = target
+				startTime = time.Time{}
+				if onComplete != nil {
+					onComplete()
+				}
+				return
+			}
+			progress := float64(elapsed) / float64(dur)
+			if ease != nil {
+				progress = ease(progress)
+			}
+			*storage = lerpColor(startVal, target, progress)
+			root.animating = true
+		})
+	}
 	return storage
 }
 
-func (t *Template) compileTweenStyle(tw tweenNode) *Style {
+func (t *Template) compileTweenStyle(tw tweenNode, elemBase unsafe.Pointer, elemSize uintptr) *Style {
 	root := t.evalRoot()
-	watchPtr := t.resolveTweenTargetStyle(tw.getTarget())
+	watchPtr := t.resolveTweenTargetStyle(tw.getTarget(), elemBase, elemSize)
 	storage := new(Style)
 	*storage = *watchPtr
 	durVal := tw.getTweenDuration()
@@ -1096,78 +1174,123 @@ func (t *Template) compileTweenStyle(tw tweenNode) *Style {
 	onComplete := tw.getTweenOnComplete()
 	ease := tw.getTweenEasing()
 
-	lastTarget := *watchPtr
-	startVal := *watchPtr
-	var startTime time.Time
+	// detect ForEach context
+	inForEach := elemBase != nil && elemSize > 0
 
-	needsFirstFrame := false
-	if from := tw.getTweenFrom(); from != nil {
-		if s, ok := from.(Style); ok {
-			*storage = s
-			startVal = s
-			needsFirstFrame = true
-		}
-	}
-
-	root.evals = append(root.evals, func() {
-		dur := durVal
-		if durPtr != nil {
-			dur = *durPtr
-		}
-		target := *watchPtr
-		now := root.frameTime
-		if needsFirstFrame {
-			startVal = *storage
-			lastTarget = target
-			startTime = now
-			needsFirstFrame = false
-		} else if target != lastTarget {
-			startVal = *storage
-			lastTarget = target
-			startTime = now
-		}
-		if startTime.IsZero() {
-			return
-		}
-		elapsed := now.Sub(startTime)
-		if elapsed >= dur {
-			*storage = target
-			startTime = time.Time{}
-			if onComplete != nil {
-				onComplete()
+	if inForEach {
+		items := make(map[unsafe.Pointer]*perItemStyleState)
+		t.itemEvals = append(t.itemEvals, func() {
+			dur := durVal
+			if durPtr != nil {
+				dur = *durPtr
 			}
-			return
+			key := t.elemBase
+			target := *watchPtr
+			now := root.frameTime
+			state, ok := items[key]
+			if !ok {
+				state = &perItemStyleState{lastTarget: target, current: target}
+				items[key] = state
+			}
+			if target != state.lastTarget {
+				state.startVal = state.current
+				state.lastTarget = target
+				state.startTime = now
+			}
+			if state.startTime.IsZero() {
+				state.current = target
+				*storage = target
+				return
+			}
+			elapsed := now.Sub(state.startTime)
+			if elapsed >= dur {
+				state.current = target
+				*storage = target
+				state.startTime = time.Time{}
+				return
+			}
+			progress := float64(elapsed) / float64(dur)
+			if ease != nil {
+				progress = ease(progress)
+			}
+			state.current = lerpStyle(state.startVal, target, progress)
+			*storage = state.current
+			root.animating = true
+		})
+	} else {
+		lastTarget := *watchPtr
+		startVal := *watchPtr
+		var startTime time.Time
+
+		needsFirstFrame := false
+		if from := tw.getTweenFrom(); from != nil {
+			if s, ok := from.(Style); ok {
+				*storage = s
+				startVal = s
+				needsFirstFrame = true
+			}
 		}
-		progress := float64(elapsed) / float64(dur)
-		if ease != nil {
-			progress = ease(progress)
-		}
-		*storage = lerpStyle(startVal, target, progress)
-		root.animating = true
-	})
+
+		root.evals = append(root.evals, func() {
+			dur := durVal
+			if durPtr != nil {
+				dur = *durPtr
+			}
+			target := *watchPtr
+			now := root.frameTime
+			if needsFirstFrame {
+				startVal = *storage
+				lastTarget = target
+				startTime = now
+				needsFirstFrame = false
+			} else if target != lastTarget {
+				startVal = *storage
+				lastTarget = target
+				startTime = now
+			}
+			if startTime.IsZero() {
+				return
+			}
+			elapsed := now.Sub(startTime)
+			if elapsed >= dur {
+				*storage = target
+				startTime = time.Time{}
+				if onComplete != nil {
+					onComplete()
+				}
+				return
+			}
+			progress := float64(elapsed) / float64(dur)
+			if ease != nil {
+				progress = ease(progress)
+			}
+			*storage = lerpStyle(startVal, target, progress)
+			root.animating = true
+		})
+	}
 
 	return storage
 }
 
 
-func (t *Template) resolveTweenTargetColor(target any) *Color {
+func (t *Template) resolveTweenTargetColor(target any, elemBase unsafe.Pointer, elemSize uintptr) *Color {
 	switch v := target.(type) {
 	case *Color:
 		return v
 	case conditionNode:
-		return t.compileCondColor(v, nil, 0)
+		return t.compileCondColor(v, elemBase, elemSize)
 	}
 	storage := new(Color)
 	*storage = anyToColor(target)
 	return storage
 }
 
-func (t *Template) resolveTweenTargetStyle(target any) *Style {
+func (t *Template) resolveTweenTargetStyle(target any, elemBase unsafe.Pointer, elemSize uintptr) *Style {
 	switch v := target.(type) {
 	case *Style:
 		return v
 	case conditionNode:
-		return t.compileCondStyle(v, nil, 0)
+		return t.compileCondStyle(v, elemBase, elemSize)
 	}
 	storage := new(Style)
 	*storage = anyToStyle(target)
@@ -2035,12 +2158,16 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 
 	idx := t.addOp(op, depth)
 
-	// compile dynamic styles for List
+	// compile dynamic styles — eval writes directly into the Style fields
 	if v.StyleDyn != nil {
-		v.StylePtr = t.compileDynStyle(v.StyleDyn, nil, 0)
+		ptr := t.compileDynStyle(v.StyleDyn, nil, 0)
+		root := t.evalRoot()
+		root.evals = append(root.evals, func() { v.Style = *ptr })
 	}
 	if v.SelectedStyleDyn != nil {
-		v.SelectedStylePtr = t.compileDynStyle(v.SelectedStyleDyn, nil, 0)
+		ptr := t.compileDynStyle(v.SelectedStyleDyn, nil, 0)
+		root := t.evalRoot()
+		root.evals = append(root.evals, func() { v.SelectedStyle = *ptr })
 	}
 
 	return idx
@@ -4380,6 +4507,7 @@ func (t *Template) layout(_ int16) {
 								elemPtr = *(*unsafe.Pointer)(elemPtr)
 							}
 							ext.iterTmpl.elemBase = elemPtr
+							ext.iterTmpl.itemIndex = li
 							for _, eval := range ext.iterTmpl.itemEvals {
 								eval()
 							}
@@ -6367,13 +6495,7 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 	var defaultStyle, selectedStyle, markerBaseStyle Style
 	if ext.listPtr != nil {
 		defaultStyle = ext.listPtr.Style
-		if ext.listPtr.StylePtr != nil {
-			defaultStyle = *ext.listPtr.StylePtr
-		}
 		selectedStyle = ext.listPtr.SelectedStyle
-		if ext.listPtr.SelectedStylePtr != nil {
-			selectedStyle = *ext.listPtr.SelectedStylePtr
-		}
 		markerBaseStyle = ext.listPtr.MarkerStyle
 	}
 
@@ -6425,6 +6547,7 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 			if needsFullPipeline {
 				// complex layout: use pre-calculated heights from layout phase
 				ext.iterTmpl.elemBase = elemPtr
+				ext.iterTmpl.itemIndex = i
 				for _, eval := range ext.iterTmpl.itemEvals {
 					eval()
 				}
@@ -6446,6 +6569,7 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 			} else {
 				// Simple text: fast path (no layout needed)
 				ext.iterTmpl.elemBase = elemPtr
+				ext.iterTmpl.itemIndex = i
 				for _, eval := range ext.iterTmpl.itemEvals {
 					eval()
 				}

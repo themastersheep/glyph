@@ -115,7 +115,9 @@ func lerpColor(from, to Color, t float64) Color {
 	r := uint8(float64(from.R) + t*float64(int16(to.R)-int16(from.R)))
 	g := uint8(float64(from.G) + t*float64(int16(to.G)-int16(from.G)))
 	b := uint8(float64(from.B) + t*float64(int16(to.B)-int16(from.B)))
-	return RGB(r, g, b)
+	// always use true colour for interpolated values — basic-16 mapping
+	// produces visible jumps when an intermediate value hits a themed colour
+	return Color{Mode: ColorRGB, R: r, G: g, B: b}
 }
 
 func lerpStyle(from, to Style, t float64) Style {

@@ -466,12 +466,10 @@ type SelectionList struct {
 	MarkerStyle   Style     // style for marker text (merged with SelectedStyle.BG for selected rows)
 	Render        any       // func(*T) any - optional, renders each item
 	MaxVisible    int       // max items to show (0 = all)
-	Style            Style     // default style for non-selected rows (e.g., background)
-	SelectedStyle    Style     // style for selected row (e.g., background color)
-	StylePtr         *Style   // dynamic style (overrides Style when non-nil, set during compilation)
-	SelectedStylePtr *Style   // dynamic selected style (overrides SelectedStyle when non-nil, set during compilation)
-	StyleDyn         any      // raw dynamic value for style (compiled to StylePtr)
-	SelectedStyleDyn any      // raw dynamic value for selected style (compiled to SelectedStylePtr)
+	Style            Style    // default style for non-selected rows
+	SelectedStyle    Style    // style for selected row
+	StyleDyn         any      // dynamic value (compiled eval writes into Style)
+	SelectedStyleDyn any      // dynamic value (compiled eval writes into SelectedStyle)
 	SelectedRef      *NodeRef // tracks position of the selected row each frame
 	len           int       // cached length for bounds checking
 	offset        int       // scroll offset for windowing
