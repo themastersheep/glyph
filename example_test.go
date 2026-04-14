@@ -22,7 +22,7 @@ func renderAndPrint(name string, tree any, w, h int) {
 	Build(tree).Execute(buf, int16(w), int16(h))
 	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
 
-	if dir := os.Getenv("GLYPH_PREVIEWS_DIR"); dir != "" && h >= 3 {
+	if dir := os.Getenv("GLYPH_PREVIEWS_DIR"); dir != "" {
 		td := termData{W: w, H: h}
 		for y := 0; y < h; y++ {
 			td.Lines = append(td.Lines, buf.GetLineStyled(y))
@@ -37,18 +37,24 @@ func renderAndPrint(name string, tree any, w, h int) {
 // Call VBox directly with children to stack them top to bottom.
 func ExampleVBoxFn() {
 	// example:
-	tree := VBox(
+	_ = VBox(
 		Text("First"),
 		Text("Second"),
 		Text("Third"),
 	)
 	// :example
 
-	renderAndPrint("VBoxFn", tree, 20, 3)
+	renderAndPrint("VBoxFn", VBox.Border(BorderRounded).Width(20)(
+		Text("Header").Bold().FG(Cyan),
+		Text("Body text"),
+		Text("Footer").Dim(),
+	), 22, 5)
 	// Output:
-	// First
-	// Second
-	// Third
+	// ╭──────────────────╮
+	// │Header            │
+	// │Body text         │
+	// │Footer            │
+	// ╰──────────────────╯
 }
 
 // Template syntax.
@@ -75,46 +81,77 @@ func ExampleVBoxFn_chained() {
 // Grow fills available space. CascadeStyle passes a style to all descendants.
 func ExampleVBoxFn_grow() {
 	// example:
-	tree := VBox.Grow(1).CascadeStyle(&Style{FG: White})(
+	_ = VBox.Grow(1).CascadeStyle(&Style{FG: White})(
 		Text("header"),
 		Text("content"),
 		Text("footer"),
 	)
 	// :example
 
-	renderAndPrint("VBoxFn_grow", tree, 20, 3)
+	renderAndPrint("VBoxFn_grow", VBox.Border(BorderRounded).Width(30).Height(7)(
+		Text("── header ──").Bold().FG(Cyan),
+		VBox.Grow(1)(Text("content fills remaining space")),
+		Text("── footer ──").Dim(),
+	), 32, 9)
 	// Output:
-	// header
-	// content
-	// footer
+	// ╭────────────────────────────╮
+	// │── header ──                │
+	// │content fills remaining spac│
+	// │                            │
+	// │                            │
+	// │── footer ──                │
+	// ╰────────────────────────────╯
 }
 
 // Horizontal layout.
 // Arrange children side by side with a gap between them.
 func ExampleHBoxFn() {
 	// example:
-	tree := HBox.Gap(2)(
+	_ = HBox.Gap(2)(
 		Text("left"),
 		Text("right"),
 	)
 	// :example
 
-	renderAndPrint("HBoxFn", tree, 20, 1)
-	// Output: left  right
+	renderAndPrint("HBoxFn", HBox.Gap(1)(
+		VBox.Border(BorderRounded).Grow(1)(Text("Panel A")),
+		VBox.Border(BorderRounded).Grow(1)(Text("Panel B")),
+		VBox.Border(BorderRounded).Grow(1)(Text("Panel C")),
+	), 42, 3)
+	// Output:
+	// ╭───────────╮ ╭───────────╮ ╭────────────╮
+	// │Panel A    │ │Panel B    │ │Panel C     │
+	// ╰───────────╯ ╰───────────╯ ╰────────────╯
 }
 
 // Sidebar pattern.
 // Combine WidthPct and Grow for a fixed sidebar with a flexible main area.
 func ExampleHBoxFn_widths() {
 	// example:
-	tree := HBox(
+	_ = HBox(
 		VBox.WidthPct(0.3)(Text("sidebar")),
 		VBox.Grow(1)(Text("main content")),
 	)
 	// :example
 
-	renderAndPrint("HBoxFn_widths", tree, 40, 1)
-	// Output: sidebar     main content
+	renderAndPrint("HBoxFn_widths", HBox(
+		VBox.WidthPct(0.3).Border(BorderRounded).Title("nav")(
+			Text("Home").Bold(),
+			Text("About").Dim(),
+			Text("Blog").Dim(),
+		),
+		VBox.Grow(1).Border(BorderRounded).Title("content")(
+			Text("Welcome to the site").Bold().FG(Cyan),
+			Text(""),
+			Text("Main content area grows to fill.").Dim(),
+		),
+	), 48, 5)
+	// Output:
+	// ╭─ nav ──────╮╭─ content ──────────────────────╮
+	// │Home        ││Welcome to the site             │
+	// │About       ││                                │
+	// │Blog        ││Main content area grows to fill.│
+	// ╰────────────╯╰────────────────────────────────╯
 }
 
 // Basic layering.
@@ -151,11 +188,22 @@ func ExampleOverlayFn_modal() {
 // Text that never changes. Pass a string literal directly.
 func ExampleText() {
 	// example:
-	tree := Text("hello world")
+	_ = Text("hello world")
 	// :example
 
-	renderAndPrint("Text", tree, 20, 1)
-	// Output: hello world
+	renderAndPrint("Text", VBox(
+		Text("plain text"),
+		Text("bold").Bold(),
+		Text("dim").Dim(),
+		Text("italic").Italic(),
+		Text("coloured").FG(Cyan),
+	), 20, 5)
+	// Output:
+	// plain text
+	// bold
+	// dim
+	// italic
+	// coloured
 }
 
 // Pointer binding.
@@ -163,11 +211,19 @@ func ExampleText() {
 func ExampleText_pointer() {
 	// example:
 	msg := "dynamic"
-	tree := Text(&msg)
+	_ = Text(&msg)
 	// :example
 
-	renderAndPrint("Text_pointer", tree, 20, 1)
-	// Output: dynamic
+	count := 42
+	renderAndPrint("Text_pointer", VBox.Border(BorderRounded).Width(24)(
+		HBox.Gap(1)(Text("count:").Dim(), Text(&count).Bold().FG(Cyan)),
+		HBox.Gap(1)(Text("label:").Dim(), Text(&msg)),
+	), 26, 4)
+	// Output:
+	// ╭──────────────────────╮
+	// │count: 42             │
+	// │label: dynamic        │
+	// ╰──────────────────────╯
 }
 
 // Inline styling.
@@ -175,11 +231,20 @@ func ExampleText_pointer() {
 func ExampleText_styled() {
 	// example:
 	msg := "styled"
-	tree := Text(&msg).Bold().FG(Cyan)
+	_ = Text(&msg).Bold().FG(Cyan)
 	// :example
 
-	renderAndPrint("Text_styled", tree, 20, 1)
-	// Output: styled
+	renderAndPrint("Text_styled", VBox(
+		Text("Bold + Cyan").Bold().FG(Cyan),
+		Text("Dim + Italic").Dim().Italic(),
+		Text("Underline + Yellow").Underline().FG(Yellow),
+		Text("Red on black").FG(Red).BG(Black),
+	), 24, 4)
+	// Output:
+	// Bold + Cyan
+	// Dim + Italic
+	// Underline + Yellow
+	// Red on black
 }
 
 // Text input.
@@ -480,11 +545,17 @@ func ExampleScroll() {
 func ExampleIf() {
 	// example:
 	show := true
-	tree := If(&show).Then(Text("visible"))
+	_ = If(&show).Then(Text("visible"))
 	// :example
 
-	renderAndPrint("If", tree, 20, 1)
-	// Output: visible
+	show2 := true
+	renderAndPrint("If", VBox(
+		HBox.Gap(1)(Text("true  →").Dim(), If(&show2).Then(Text("✓ visible").FG(Green))),
+		HBox.Gap(1)(Text("false →").Dim(), Text("  (nothing rendered)").Dim()),
+	), 30, 2)
+	// Output:
+	// true  → ✓ visible
+	// false →   (nothing rendered)
 }
 
 // Toggle views.
@@ -492,11 +563,17 @@ func ExampleIf() {
 func ExampleIf_else() {
 	// example:
 	loggedIn := false
-	tree := If(&loggedIn).Then(Text("dashboard")).Else(Text("login"))
+	_ = If(&loggedIn).Then(Text("dashboard")).Else(Text("login"))
 	// :example
 
-	renderAndPrint("If_else", tree, 20, 1)
-	// Output: login
+	t, f := true, false
+	renderAndPrint("If_else", VBox(
+		HBox.Gap(1)(Text("loggedIn=true  →").Dim(), If(&t).Then(Text("dashboard").FG(Green)).Else(Text("login").FG(Yellow))),
+		HBox.Gap(1)(Text("loggedIn=false →").Dim(), If(&f).Then(Text("dashboard").FG(Green)).Else(Text("login").FG(Yellow))),
+	), 36, 2)
+	// Output:
+	// loggedIn=true  → dashboard
+	// loggedIn=false → login
 }
 
 // Value matching.
@@ -504,15 +581,21 @@ func ExampleIf_else() {
 func ExampleCondition_eq() {
 	// example:
 	status := "active"
-	tree := If(&status).Eq("active").Then(
+	_ = If(&status).Eq("active").Then(
 		Text("online").FG(Green),
 	).Else(
 		Text("offline").FG(Red),
 	)
 	// :example
 
-	renderAndPrint("Condition_eq", tree, 20, 1)
-	// Output: online
+	s1, s2 := "active", "inactive"
+	renderAndPrint("Condition_eq", VBox(
+		HBox.Gap(1)(Text("status=\"active\"   →").Dim(), If(&s1).Eq("active").Then(Text("● online").FG(Green)).Else(Text("● offline").FG(Red))),
+		HBox.Gap(1)(Text("status=\"inactive\" →").Dim(), If(&s2).Eq("active").Then(Text("● online").FG(Green)).Else(Text("● offline").FG(Red))),
+	), 40, 2)
+	// Output:
+	// status="active"   → ● online
+	// status="inactive" → ● offline
 }
 
 // Multi-way branch.
@@ -520,14 +603,28 @@ func ExampleCondition_eq() {
 func ExampleSwitch() {
 	// example:
 	mode := "edit"
-	tree := Switch(&mode).
+	_ = Switch(&mode).
 		Case("edit", Text("editing")).
 		Case("preview", Text("previewing")).
 		Default(Text("idle"))
 	// :example
 
-	renderAndPrint("Switch", tree, 20, 1)
-	// Output: editing
+	m1, m2, m3 := "edit", "preview", "other"
+	row := func(label string, m *string) any {
+		return HBox.Gap(1)(Text(label).Dim(), Switch(m).
+			Case("edit", Text("✎ editing").FG(Green)).
+			Case("preview", Text("👁 previewing").FG(Cyan)).
+			Default(Text("… idle").FG(BrightBlack)))
+	}
+	renderAndPrint("Switch", VBox(
+		row("mode=\"edit\"    →", &m1),
+		row("mode=\"preview\" →", &m2),
+		row("mode=\"other\"   →", &m3),
+	), 36, 3)
+	// Output:
+	// mode="edit"    → ✎ editing
+	// mode="preview" → 👁 previewing
+	// mode="other"   → … idle
 }
 
 // Numeric comparison.
@@ -535,16 +632,23 @@ func ExampleSwitch() {
 func ExampleOrdCondition() {
 	// example:
 	count := 5
-	tree := IfOrd(&count).Gte(10).Then(Text("many")).Else(Text("few"))
+	_ = IfOrd(&count).Gte(10).Then(Text("many")).Else(Text("few"))
 	// :example
 
-	renderAndPrint("OrdCondition", tree, 20, 1)
-	// Output: few
+	c1, c2 := 5, 15
+	renderAndPrint("OrdCondition", VBox(
+		HBox.Gap(1)(Text("count=5  →").Dim(), IfOrd(&c1).Gte(10).Then(Text("many (≥10)").FG(Green)).Else(Text("few (<10)").FG(Yellow))),
+		HBox.Gap(1)(Text("count=15 →").Dim(), IfOrd(&c2).Gte(10).Then(Text("many (≥10)").FG(Green)).Else(Text("few (<10)").FG(Yellow))),
+	), 34, 2)
+	// Output:
+	// count=5  → few (<10)
+	// count=15 → many (≥10)
 }
 
 // Slice iteration.
 // Iterate a slice with per-item templates. The callback receives a pointer to each item.
 func ExampleForEach() {
+	// example:
 	type Todo struct {
 		Title string
 		Done  bool
@@ -674,13 +778,32 @@ func ExampleViewBuilder() {
 func ExampleDefaultStyle() {
 	// example:
 	s := DefaultStyle().Bold().Foreground(Cyan)
-	tree := VBox.CascadeStyle(&s)(
+	_ = VBox.CascadeStyle(&s)(
 		Text("all children inherit bold cyan"),
 	)
 	// :example
 
-	renderAndPrint("DefaultStyle", tree, 40, 1)
-	// Output: all children inherit bold cyan
+	base := DefaultStyle().Foreground(BrightBlack)
+	accent := DefaultStyle().Bold().Foreground(Cyan)
+	renderAndPrint("DefaultStyle", VBox(
+		VBox.CascadeStyle(&base).Border(BorderRounded).Title("base: dim")(
+			Text("inherits dim"),
+			Text("everywhere"),
+		),
+		VBox.CascadeStyle(&accent).Border(BorderRounded).Title("base: cyan bold")(
+			Text("inherits bold cyan"),
+			Text("everywhere"),
+		),
+	), 26, 8)
+	// Output:
+	// ╭─ base: dim ────────────╮
+	// │inherits dim            │
+	// │everywhere              │
+	// ╰────────────────────────╯
+	// ╭─ base: cyan bold ──────╮
+	// │inherits bold cyan      │
+	// │everywhere              │
+	// ╰────────────────────────╯
 }
 
 // Struct literal.
@@ -688,11 +811,21 @@ func ExampleDefaultStyle() {
 func ExampleStyle() {
 	// example:
 	highlight := Style{FG: Yellow, Attr: AttrBold | AttrUnderline}
-	tree := Text("warning").Style(highlight)
+	_ = Text("warning").Style(highlight)
 	// :example
 
-	renderAndPrint("Style", tree, 20, 1)
-	// Output: warning
+	info := Style{FG: Cyan, Attr: AttrBold}
+	warn := Style{FG: Yellow, Attr: AttrBold | AttrUnderline}
+	err := Style{FG: Red, Attr: AttrBold}
+	renderAndPrint("Style", VBox(
+		Text("INFO  all systems go").Style(info),
+		Text("WARN  disk 80% full").Style(warn),
+		Text("ERROR connection lost").Style(err),
+	), 24, 3)
+	// Output:
+	// INFO  all systems go
+	// WARN  disk 80% full
+	// ERROR connection lost
 }
 
 // Style margin.
@@ -711,22 +844,38 @@ func ExampleStyle_margin() {
 // Takes a uint32, not a string. Use Go hex literals.
 func ExampleHex() {
 	// example:
-	tree := Text("branded").FG(Hex(0xFF5500))
+	_ = Text("branded").FG(Hex(0xFF5500))
 	// :example
 
-	renderAndPrint("Hex", tree, 20, 1)
-	// Output: branded
+	renderAndPrint("Hex", VBox(
+		Text("█ #FF5500").FG(Hex(0xFF5500)),
+		Text("█ #00CC88").FG(Hex(0x00CC88)),
+		Text("█ #8855FF").FG(Hex(0x8855FF)),
+	), 16, 3)
+	// Output:
+	// █ #FF5500
+	// █ #00CC88
+	// █ #8855FF
 }
 
 // RGB colour.
 // Precise 24-bit colour from red, green, blue components.
 func ExampleRGB() {
 	// example:
-	tree := Text("vivid").FG(RGB(255, 85, 0))
+	_ = Text("vivid").FG(RGB(255, 85, 0))
 	// :example
 
-	renderAndPrint("RGB", tree, 20, 1)
-	// Output: vivid
+	renderAndPrint("RGB", HBox(
+		Text("█").FG(RGB(255, 0, 0)),
+		Text("█").FG(RGB(255, 85, 0)),
+		Text("█").FG(RGB(255, 170, 0)),
+		Text("█").FG(RGB(255, 255, 0)),
+		Text("█").FG(RGB(0, 255, 0)),
+		Text("█").FG(RGB(0, 170, 255)),
+		Text("█").FG(RGB(85, 0, 255)),
+		Text(" RGB spectrum"),
+	), 22, 1)
+	// Output: ███████ RGB spectrum
 }
 
 // Colour blending.
@@ -735,11 +884,16 @@ func ExampleLerpColor() {
 	// example:
 	pct := 0.75
 	bar := LerpColor(Red, Green, pct)
-	tree := Text("75%").FG(bar)
+	_ = Text("75%").FG(bar)
 	// :example
 
-	renderAndPrint("LerpColor", tree, 20, 1)
-	// Output: 75%
+	children := make([]any, 20)
+	for i := range children {
+		t := float64(i) / 19.0
+		children[i] = Text("█").FG(LerpColor(Red, Green, t))
+	}
+	renderAndPrint("LerpColor", HBox(children...), 22, 1)
+	// Output: ████████████████████
 }
 
 // Terminal palette.
@@ -1272,15 +1426,26 @@ func ExampleSEQuantize() {
 func ExampleMatch() {
 	// example:
 	status := "error"
-	tree := Match(&status,
+	_ = Match(&status,
 		Eq("ok", Text("all clear")),
 		Eq("warn", Text("warning")),
 		Eq("error", Text("failure")),
 	).Default(Text("unknown"))
 	// :example
 
-	renderAndPrint("Match", tree, 20, 1)
-	// Output: failure
+	s1, s2, s3 := "ok", "warn", "error"
+	row := func(s *string) any {
+		return HBox.Gap(1)(Text(*s+"  →").Dim(), Match(s,
+			Eq("ok", Text("✓ all clear").FG(Green)),
+			Eq("warn", Text("⚠ warning").FG(Yellow)),
+			Eq("error", Text("✗ failure").FG(Red)),
+		).Default(Text("? unknown").Dim()))
+	}
+	renderAndPrint("Match", VBox(row(&s1), row(&s2), row(&s3)), 24, 3)
+	// Output:
+	// ok  → ✓ all clear
+	// warn  → ⚠ warning
+	// error  → ✗ failure
 }
 
 // Ordered thresholds.
@@ -1288,15 +1453,26 @@ func ExampleMatch() {
 func ExampleMatch_ordered() {
 	// example:
 	cpu := 85.0
-	tree := Match(&cpu,
+	_ = Match(&cpu,
 		Gt(90.0, Text("CRITICAL")),
 		Gt(70.0, Text("WARNING")),
 		Lte(70.0, Text("OK")),
 	)
 	// :example
 
-	renderAndPrint("Match_ordered", tree, 20, 1)
-	// Output: WARNING
+	c1, c2, c3 := 95.0, 75.0, 40.0
+	bar := func(label string, c *float64) any {
+		return HBox.Gap(1)(Text(label+" →").Dim(), Match(c,
+			Gt(90.0, Text("CRITICAL").FG(Red).Bold()),
+			Gt(70.0, Text("WARNING").FG(Yellow)),
+			Lte(70.0, Text("OK").FG(Green)),
+		))
+	}
+	renderAndPrint("Match_ordered", VBox(bar(" 95", &c1), bar(" 75", &c2), bar(" 40", &c3)), 24, 3)
+	// Output:
+	//  95 → CRITICAL
+	//  75 → WARNING
+	//  40 → OK
 }
 
 // Predicate matching.
@@ -1304,13 +1480,25 @@ func ExampleMatch_ordered() {
 func ExampleMatch_where() {
 	// example:
 	query := "hello world"
-	tree := Match(&query,
+	_ = Match(&query,
 		Eq("", Text("type to search")),
 		Where(func(q string) bool { return len(q) < 3 }, Text("keep typing...")),
 		Where(func(q string) bool { return len(q) >= 3 }, Text("searching")),
 	)
 	// :example
 
-	renderAndPrint("Match_where", tree, 20, 1)
-	// Output: searching
+	q1, q2, q3 := "", "hi", "hello world"
+	row := func(q *string) any {
+		label := "\"" + *q + "\""
+		return HBox.Gap(1)(Text(label).Dim().Width(14), Match(q,
+			Eq("", Text("type to search").FG(BrightBlack)),
+			Where(func(s string) bool { return len(s) < 3 }, Text("keep typing...").FG(Yellow)),
+			Where(func(s string) bool { return len(s) >= 3 }, Text("searching").FG(Green)),
+		))
+	}
+	renderAndPrint("Match_where", VBox(row(&q1), row(&q2), row(&q3)), 34, 3)
+	// Output:
+	// ""             type to search
+	// "hi"           keep typing...
+	// "hello world"  searching
 }

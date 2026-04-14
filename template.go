@@ -1705,6 +1705,7 @@ const (
 	OpSpacer       // Empty space (data in Ext)
 	OpSpinner      // Animated spinner (data in Ext)
 	OpScrollbar    // Scroll indicator (data in Ext)
+	OpTextBlock    // Multi-line wrapped text (data in Ext)
 	OpTabs         // Tab headers (data in Ext)
 	OpTreeView     // Hierarchical tree (data in Ext)
 	OpJump         // Jump target wrapper (data in Ext)
@@ -1830,6 +1831,8 @@ func (t *Template) compile(node any, parent int16, depth int, elemBase unsafe.Po
 		return t.compileHBoxC(v, parent, depth, elemBase, elemSize)
 	case TextC:
 		return t.compileTextC(v, parent, depth, elemBase, elemSize)
+	case TextBlockC:
+		return t.compileTextBlockC(v, parent, depth, elemBase, elemSize)
 	case SpacerC:
 		return t.compileSpacerC(v, parent, depth)
 	case HRuleC:
@@ -2854,6 +2857,35 @@ func (t *Template) compileTextC(v TextC, parent int16, depth int, elemBase unsaf
 	return idx
 }
 
+func (t *Template) compileTextBlockC(v TextBlockC, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
+	ext := &opText{style: v.style}
+
+	switch val := v.content.(type) {
+	case string:
+		ext.mode = textStatic
+		ext.static = val
+	case *string:
+		if elemBase != nil && isWithinRange(unsafe.Pointer(val), elemBase, elemSize) {
+			ext.mode = textOff
+			ext.off = uintptr(unsafe.Pointer(val)) - uintptr(elemBase)
+		} else {
+			ext.mode = textPtr
+			ext.ptr = val
+		}
+	case func() string:
+		ext.mode = textFn
+		ext.fn = val
+	}
+
+	ext.stylePtr = t.compileStyleDyn(v.style, v.styleDyn, v.fgDyn, v.bgDyn, elemBase, elemSize)
+
+	return t.addOp(Op{
+		Kind:   OpTextBlock,
+		Parent: parent,
+		Ext:    ext,
+	}, depth)
+}
+
 func (t *Template) compileSpacerC(v SpacerC, parent int16, depth int) int16 {
 	grow := v.flexGrow
 	if grow == 0 && v.width == 0 && v.height == 0 && v.widthPtr == nil && v.heightPtr == nil && v.flexGrowPtr == nil && v.widthCond == nil && v.heightCond == nil && v.flexGrowCond == nil {
@@ -3785,6 +3817,9 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 			geom.W = op.Ext.(*opText).textWidth(elemBase)
 		}
 
+	case OpTextBlock:
+		geom.W = availW
+
 	case OpProgress:
 		geom.W = op.width()
 
@@ -4403,6 +4438,20 @@ func (t *Template) layout(_ int16) {
 			switch op.Kind {
 			case OpText, OpProgress, OpRichText, OpLeader, OpCounter:
 				geom.H = 1
+
+			case OpTextBlock:
+				ext := op.Ext.(*opText)
+				text := ext.resolve(t.elemBase)
+				w := int(geom.W)
+				if w <= 0 {
+					w = 72
+				}
+				lines := wrapText(text, w)
+				if len(lines) == 0 {
+					geom.H = 1
+				} else {
+					geom.H = int16(len(lines))
+				}
 
 			case OpAutoTable:
 				ext := op.Ext.(*opAutoTable)
@@ -5506,6 +5555,23 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 		}
 		buf.WriteStringFast(x, int(absY), text, style, int(maxW))
 
+	case OpTextBlock:
+		ext := op.Ext.(*opText)
+		baseStyle := ext.style
+		if ext.stylePtr != nil {
+			baseStyle = *ext.stylePtr
+		}
+		style := t.effectiveStyle(baseStyle)
+		raw := ext.resolve(t.elemBase)
+		lines := wrapText(raw, int(contentW))
+		for i, line := range lines {
+			y := int(absY) + i
+			if y >= buf.Height() {
+				break
+			}
+			buf.WriteStringFast(int(absX), y, line, style, int(maxW))
+		}
+
 	case OpProgress:
 		ext := op.Ext.(*opProgress)
 		ratio := float32(ext.resolve(t.elemBase)) / 100.0
@@ -6061,6 +6127,23 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 			x += alignOffset(text, int(alignW), style.Align)
 		}
 		buf.WriteStringFast(x, int(absY), text, style, int(maxW))
+
+	case OpTextBlock:
+		ext := op.Ext.(*opText)
+		baseStyle := ext.style
+		if ext.stylePtr != nil {
+			baseStyle = *ext.stylePtr
+		}
+		style := mergeStyle(baseStyle)
+		raw := ext.resolve(elemBase)
+		lines := wrapText(raw, int(contentW))
+		for i, line := range lines {
+			y := int(absY) + i
+			if y >= buf.Height() {
+				break
+			}
+			buf.WriteStringFast(int(absX), y, line, style, int(maxW))
+		}
 
 	case OpProgress:
 		ext := op.Ext.(*opProgress)

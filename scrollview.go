@@ -73,9 +73,17 @@ func (sv *ScrollViewC) Layer() *Layer {
 	return sv.layer
 }
 
+// SetChildren replaces the children and marks for re-render.
+func (sv *ScrollViewC) SetChildren(children ...any) {
+	sv.children = children
+	sv.childTmpl = nil // force rebuild
+	sv.layer.lastRenderWidth = 0
+}
+
 // Refresh forces re-render of children on the next frame.
 // Call when the content has changed.
 func (sv *ScrollViewC) Refresh() {
+	sv.childTmpl = nil
 	sv.layer.lastRenderWidth = 0
 }
 
@@ -98,15 +106,16 @@ func (sv *ScrollViewC) render() {
 		sv.childTmpl = Build(VBox(sv.children...))
 	}
 
-	// run layout at the viewport width to get natural content height
+	// run full layout pipeline to get natural content height
 	sv.childTmpl.distributeWidths(int16(w), nil)
 	sv.childTmpl.layout(32000) // large height so children aren't constrained
 
-	// read the natural content height from the root op
 	contentH := int(sv.childTmpl.geom[0].ContentH)
 	if contentH < sv.layer.ViewportHeight() {
 		contentH = sv.layer.ViewportHeight()
 	}
+
+	sv.childTmpl.distributeFlexGrow(int16(contentH))
 
 	// render into a buffer sized to the actual content
 	buf := NewBuffer(w, contentH)
