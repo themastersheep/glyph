@@ -1,68 +1,136 @@
 package glyph_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/kungfusheep/glyph"
-	"os"
-	"time"
 )
+
+type termData struct {
+	W     int      `json:"w"`
+	H     int      `json:"h"`
+	Lines []string `json:"lines"`
+}
+
+func renderAndPrint(name string, tree any, w, h int) {
+	buf := NewBuffer(w, h)
+	Build(tree).Execute(buf, int16(w), int16(h))
+	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
+
+	if dir := os.Getenv("GLYPH_PREVIEWS_DIR"); dir != "" && h >= 3 {
+		td := termData{W: w, H: h}
+		for y := 0; y < h; y++ {
+			td.Lines = append(td.Lines, buf.GetLineStyled(y))
+		}
+		data, _ := json.Marshal(td)
+		os.MkdirAll(dir, 0755)
+		os.WriteFile(filepath.Join(dir, name+".json"), data, 0644)
+	}
+}
 
 // Vertical stack.
 // Call VBox directly with children to stack them top to bottom.
 func ExampleVBoxFn() {
-	VBox(
+	// example:
+	tree := VBox(
 		Text("First"),
 		Text("Second"),
 		Text("Third"),
 	)
+	// :example
+
+	renderAndPrint("VBoxFn", tree, 20, 3)
+	// Output:
+	// First
+	// Second
+	// Third
 }
 
 // Template syntax.
 // Chain methods to configure, then call as a function with children. Configure once, render many.
 func ExampleVBoxFn_chained() {
-	VBox.Gap(1).Border(BorderRounded)(
+	// example:
+	tree := VBox.Gap(1).Border(BorderRounded)(
 		Text("First"),
 		Text("Second"),
 	)
+	// :example
+
+	renderAndPrint("VBoxFn_chained", tree, 20, 6)
+	// Output:
+	// ╭──────────────────╮
+	// │First             │
+	// │                  │
+	// │Second            │
+	// │                  │
+	// ╰──────────────────╯
 }
 
 // Flex growth.
 // Grow fills available space. CascadeStyle passes a style to all descendants.
 func ExampleVBoxFn_grow() {
-	VBox.Grow(1).CascadeStyle(&Style{FG: White})(
+	// example:
+	tree := VBox.Grow(1).CascadeStyle(&Style{FG: White})(
 		Text("header"),
 		Text("content"),
 		Text("footer"),
 	)
+	// :example
+
+	renderAndPrint("VBoxFn_grow", tree, 20, 3)
+	// Output:
+	// header
+	// content
+	// footer
 }
 
 // Horizontal layout.
 // Arrange children side by side with a gap between them.
 func ExampleHBoxFn() {
-	HBox.Gap(2)(
+	// example:
+	tree := HBox.Gap(2)(
 		Text("left"),
 		Text("right"),
 	)
+	// :example
+
+	renderAndPrint("HBoxFn", tree, 20, 1)
+	// Output: left  right
 }
 
 // Sidebar pattern.
 // Combine WidthPct and Grow for a fixed sidebar with a flexible main area.
 func ExampleHBoxFn_widths() {
-	HBox(
+	// example:
+	tree := HBox(
 		VBox.WidthPct(0.3)(Text("sidebar")),
 		VBox.Grow(1)(Text("main content")),
 	)
+	// :example
+
+	renderAndPrint("HBoxFn_widths", tree, 40, 1)
+	// Output: sidebar     main content
 }
 
 // Basic layering.
 // Layer children on top of each other. The last child renders on top.
 func ExampleOverlayFn() {
-	Overlay(
+	// example:
+	tree := Overlay(
 		Text("base content"),
 		Text("floating dialog"),
 	)
+	// :example
+
+	renderAndPrint("OverlayFn", tree, 20, 2)
+	// Output:
+	// base content
+	// floating dialog
 }
 
 // Modal dialog.
@@ -82,21 +150,36 @@ func ExampleOverlayFn_modal() {
 // Static text.
 // Text that never changes. Pass a string literal directly.
 func ExampleText() {
-	Text("hello world")
+	// example:
+	tree := Text("hello world")
+	// :example
+
+	renderAndPrint("Text", tree, 20, 1)
+	// Output: hello world
 }
 
 // Pointer binding.
 // Pass a pointer so the rendered text reflects the current value. Mutate the string, then trigger a render to see it.
 func ExampleText_pointer() {
+	// example:
 	msg := "dynamic"
-	Text(&msg)
+	tree := Text(&msg)
+	// :example
+
+	renderAndPrint("Text_pointer", tree, 20, 1)
+	// Output: dynamic
 }
 
 // Inline styling.
 // Chain style methods. Bold, Dim, Italic, Underline, and FG/BG are all available.
 func ExampleText_styled() {
+	// example:
 	msg := "styled"
-	Text(&msg).Bold().FG(Cyan)
+	tree := Text(&msg).Bold().FG(Cyan)
+	// :example
+
+	renderAndPrint("Text_styled", tree, 20, 1)
+	// Output: styled
 }
 
 // Text input.
@@ -138,22 +221,33 @@ func ExampleCheckList() {
 // Tab bar.
 // Bound to an int pointer. The selected index is written when the user picks a tab.
 func ExampleTabs() {
+	// example:
 	var active int
 	tabs := []string{"General", "Advanced", "About"}
+	tree := Tabs(tabs, &active)
+	// :example
 
-	Tabs(tabs, &active)
+	renderAndPrint("Tabs", tree, 40, 1)
+	// Output: General  Advanced  About
 }
 
 // Custom tab styles.
 // Customize appearance with Kind for the shape and per-state styles for active/inactive tabs.
 func ExampleTabs_styled() {
+	// example:
 	var active int
 	tabs := []string{"Code", "Preview", "Settings"}
-
-	Tabs(tabs, &active).
+	tree := Tabs(tabs, &active).
 		Kind(TabsStyleBox).
 		ActiveStyle(Style{FG: Cyan, Attr: AttrBold}).
 		InactiveStyle(Style{FG: BrightBlack})
+	// :example
+
+	renderAndPrint("Tabs_styled", tree, 40, 3)
+	// Output:
+	// ┌──────┐  ┌─────────┐  ┌──────────┐
+	// │ Code │  │ Preview │  │ Settings │
+	// └──────┘  └─────────┘  └──────────┘
 }
 
 // Searchable list.
@@ -170,18 +264,25 @@ func ExampleFilterList() {
 // Struct table.
 // Generate a table from a struct slice. Column options control formatting.
 func ExampleAutoTable() {
+	// example:
 	type Row struct {
 		Name string
 		CPU  float64
 	}
 	rows := []Row{{Name: "api", CPU: 42.5}}
+	tree := AutoTable(&rows).Column("CPU", Number(1))
+	// :example
 
-	AutoTable(&rows).Column("CPU", Number(1))
+	renderAndPrint("AutoTable", tree, 40, 5)
+	// Output:
+	// Name                                CPU
+	// api                                42.5
 }
 
 // Column formatters.
 // Mix formatters: percentages, byte sizes, booleans, and colour-coded changes.
 func ExampleAutoTable_columns() {
+	// example:
 	type Service struct {
 		Name   string
 		CPU    float64
@@ -192,24 +293,35 @@ func ExampleAutoTable_columns() {
 	rows := []Service{
 		{Name: "api", CPU: 82.3, Memory: 1073741824, Active: true, Growth: 0.12},
 	}
-
-	AutoTable(&rows).
+	tree := AutoTable(&rows).
 		Column("CPU", Percent(1)).
 		Column("Memory", Bytes()).
 		Column("Active", Bool("Yes", "No")).
 		Column("Growth", PercentChange(1))
+	// :example
+
+	renderAndPrint("AutoTable_columns", tree, 60, 5)
+	// Output:
+	// Name            CPU       Memory    Active          Growth
+	// api           82.3%       1.0 GB     Yes             +0.1%
 }
 
 // Currency formatting.
 // Format a float as a monetary value with the given symbol and decimal places.
 func ExampleCurrency() {
+	// example:
 	type Invoice struct {
 		Item  string
 		Price float64
 	}
 	rows := []Invoice{{Item: "Widget", Price: 42.50}}
+	tree := AutoTable(&rows).Column("Price", Currency("$", 2))
+	// :example
 
-	AutoTable(&rows).Column("Price", Currency("$", 2))
+	renderAndPrint("Currency", tree, 40, 5)
+	// Output:
+	// Item                              Price
+	// Widget                           $42.50
 }
 
 // Progress bar.
@@ -231,44 +343,71 @@ func ExampleSpinner() {
 // Radio group.
 // Bound to an int pointer. The selected index updates when the user navigates and presses enter.
 func ExampleRadio() {
+	// example:
 	var selected int
+	tree := Radio(&selected, "Small", "Medium", "Large").BindNav("j", "k")
+	// :example
 
-	Radio(&selected, "Small", "Medium", "Large").BindNav("j", "k")
+	renderAndPrint("Radio", tree, 20, 3)
+	// Output:
+	// ◉ Small
+	// ○ Medium
+	// ○ Large
 }
 
 // Single checkbox.
 // Bound to a bool pointer.
 func ExampleCheckbox() {
+	// example:
 	var agreed bool
+	tree := Checkbox(&agreed, "I agree to the terms")
+	// :example
 
-	Checkbox(&agreed, "I agree to the terms")
+	renderAndPrint("Checkbox", tree, 30, 1)
+	// Output: ☐ I agree to the terms
 }
 
 // Leader line.
 // Label on the left, value on the right, dots filling the gap. Both sides read from pointers each frame.
 func ExampleLeader() {
+	// example:
 	label := "Total"
 	value := "$42.00"
+	tree := Leader(&label, &value)
+	// :example
 
-	Leader(&label, &value)
+	renderAndPrint("Leader", tree, 20, 1)
+	// Output: Total.........$42.00
 }
 
 // Mini chart.
 // A line chart from a float64 slice pointer. Append values and trigger a render to update.
 func ExampleSparkline() {
+	// example:
 	values := []float64{1, 3, 5, 2, 8, 4}
+	tree := Sparkline(&values).Width(20).FG(Green)
+	// :example
 
-	Sparkline(&values).Width(20).FG(Green)
+	renderAndPrint("Sparkline", tree, 25, 1)
+	// Output: ▁▃▅▂█▄
 }
 
 // Flexible spacer.
 // Pushes siblings apart. In a VBox, it pushes content to the top and bottom.
 func ExampleSpace() {
-	VBox(
+	// example:
+	tree := VBox(
 		Text("header"),
 		Space(),
 		Text("footer"),
 	)
+	// :example
+
+	renderAndPrint("Space", tree, 20, 3)
+	// Output:
+	// header
+	//
+	// footer
 }
 
 // Fixed-height gap.
@@ -284,31 +423,49 @@ func ExampleSpaceH() {
 // Fixed-width gap.
 // Use in HBox to add exact spacing between elements.
 func ExampleSpaceW() {
-	HBox(
+	// example:
+	tree := HBox(
 		Text("left"),
 		SpaceW(4),
 		Text("right"),
 	)
+	// :example
+
+	renderAndPrint("SpaceW", tree, 20, 1)
+	// Output: left    right
 }
 
 // Horizontal divider.
 // A line that fills the available width.
 func ExampleHRule() {
-	VBox(
+	// example:
+	tree := VBox(
 		Text("above"),
 		HRule(),
 		Text("below"),
 	)
+	// :example
+
+	renderAndPrint("HRule", tree, 10, 3)
+	// Output:
+	// above
+	// ──────────
+	// below
 }
 
 // Vertical divider.
 // A line that fills the available height.
 func ExampleVRule() {
-	HBox(
+	// example:
+	tree := HBox(
 		Text("left"),
 		VRule(),
 		Text("right"),
 	)
+	// :example
+
+	renderAndPrint("VRule", tree, 15, 1)
+	// Output: left│right
 }
 
 // Scrollbar.
@@ -321,43 +478,68 @@ func ExampleScroll() {
 // Conditional show.
 // Show or hide content based on a bool pointer. The value is checked every frame.
 func ExampleIf() {
+	// example:
 	show := true
-	If(&show).Then(Text("visible"))
+	tree := If(&show).Then(Text("visible"))
+	// :example
+
+	renderAndPrint("If", tree, 20, 1)
+	// Output: visible
 }
 
 // Toggle views.
 // Switch between two views based on state.
 func ExampleIf_else() {
+	// example:
 	loggedIn := false
-	If(&loggedIn).Then(Text("dashboard")).Else(Text("login"))
+	tree := If(&loggedIn).Then(Text("dashboard")).Else(Text("login"))
+	// :example
+
+	renderAndPrint("If_else", tree, 20, 1)
+	// Output: login
 }
 
 // Value matching.
 // Match against a specific value. Works with strings, ints, or any comparable type.
 func ExampleCondition_eq() {
+	// example:
 	status := "active"
-	If(&status).Eq("active").Then(
+	tree := If(&status).Eq("active").Then(
 		Text("online").FG(Green),
 	).Else(
 		Text("offline").FG(Red),
 	)
+	// :example
+
+	renderAndPrint("Condition_eq", tree, 20, 1)
+	// Output: online
 }
 
 // Multi-way branch.
 // Branch on a value with named cases. Default catches unmatched values.
 func ExampleSwitch() {
+	// example:
 	mode := "edit"
-	Switch(&mode).
+	tree := Switch(&mode).
 		Case("edit", Text("editing")).
 		Case("preview", Text("previewing")).
 		Default(Text("idle"))
+	// :example
+
+	renderAndPrint("Switch", tree, 20, 1)
+	// Output: editing
 }
 
 // Numeric comparison.
 // IfOrd supports Gt, Lt, Gte, Lte for any ordered type (int, float64, string).
 func ExampleOrdCondition() {
+	// example:
 	count := 5
-	IfOrd(&count).Gte(10).Then(Text("many")).Else(Text("few"))
+	tree := IfOrd(&count).Gte(10).Then(Text("many")).Else(Text("few"))
+	// :example
+
+	renderAndPrint("OrdCondition", tree, 20, 1)
+	// Output: few
 }
 
 // Slice iteration.
@@ -380,21 +562,31 @@ func ExampleForEach() {
 // Inline spans.
 // Mix Bold, Dim, Italic, FG and plain strings in a single line.
 func ExampleRich() {
-	Rich(
+	// example:
+	tree := Rich(
 		Bold("Important: "),
 		Dim("supporting detail"),
 		FG("error", Red),
 	)
+	// :example
+
+	renderAndPrint("Rich", tree, 40, 1)
+	// Output: Important: supporting detailerror
 }
 
 // Custom span styles.
 // Styled creates a span with a full Style struct for fine-grained control.
 func ExampleSpan() {
-	Rich(
+	// example:
+	tree := Rich(
 		Styled("custom", Style{FG: Hex(0xFF5500), Attr: AttrBold}),
 		" mixed with ",
 		Italic("emphasis"),
 	)
+	// :example
+
+	renderAndPrint("Span", tree, 40, 1)
+	// Output: custom mixed with emphasis
 }
 
 // Full-screen app.
@@ -480,65 +672,103 @@ func ExampleViewBuilder() {
 // Style chaining.
 // Build a style by chaining methods on DefaultStyle. CascadeStyle on a container applies it to all descendants.
 func ExampleDefaultStyle() {
+	// example:
 	s := DefaultStyle().Bold().Foreground(Cyan)
-
-	VBox.CascadeStyle(&s)(
+	tree := VBox.CascadeStyle(&s)(
 		Text("all children inherit bold cyan"),
 	)
+	// :example
+
+	renderAndPrint("DefaultStyle", tree, 40, 1)
+	// Output: all children inherit bold cyan
 }
 
 // Struct literal.
 // Construct a Style directly when you know the exact fields. Attr flags combine with bitwise OR.
 func ExampleStyle() {
+	// example:
 	highlight := Style{FG: Yellow, Attr: AttrBold | AttrUnderline}
+	tree := Text("warning").Style(highlight)
+	// :example
 
-	Text("warning").Style(highlight)
+	renderAndPrint("Style", tree, 20, 1)
+	// Output: warning
 }
 
 // Style margin.
 // Margin is part of Style. Values are top, right, bottom, left (CSS order).
 func ExampleStyle_margin() {
+	// example:
 	s := DefaultStyle().MarginTRBL(1, 2, 1, 2)
+	tree := Text("margined text").Style(s)
+	// :example
 
-	Text("margined text").Style(s)
+	renderAndPrint("Style_margin", tree, 20, 3)
+	// Output: margined text
 }
 
 // Hex colour.
 // Takes a uint32, not a string. Use Go hex literals.
 func ExampleHex() {
-	Text("branded").FG(Hex(0xFF5500))
+	// example:
+	tree := Text("branded").FG(Hex(0xFF5500))
+	// :example
+
+	renderAndPrint("Hex", tree, 20, 1)
+	// Output: branded
 }
 
 // RGB colour.
 // Precise 24-bit colour from red, green, blue components.
 func ExampleRGB() {
-	Text("vivid").FG(RGB(255, 85, 0))
+	// example:
+	tree := Text("vivid").FG(RGB(255, 85, 0))
+	// :example
+
+	renderAndPrint("RGB", tree, 20, 1)
+	// Output: vivid
 }
 
 // Colour blending.
 // LerpColor blends two colours. t=0 returns the first, t=1 returns the second, 0.5 is the midpoint.
 func ExampleLerpColor() {
+	// example:
 	pct := 0.75
 	bar := LerpColor(Red, Green, pct)
-	Text("75%").FG(bar)
+	tree := Text("75%").FG(bar)
+	// :example
+
+	renderAndPrint("LerpColor", tree, 20, 1)
+	// Output: 75%
 }
 
 // Terminal palette.
 // BasicColor uses the terminal's 16-colour palette (0–15). These respect the user's terminal theme.
 func ExampleBasicColor() {
-	Text("theme-aware").FG(BasicColor(9))
+	// example:
+	tree := Text("theme-aware").FG(BasicColor(9))
+	// :example
+
+	renderAndPrint("BasicColor", tree, 20, 1)
+	// Output: theme-aware
 }
 
 // Extended palette.
 // PaletteColor uses the 256-colour extended palette.
 func ExamplePaletteColor() {
-	Text("orange-ish").FG(PaletteColor(214))
+	// example:
+	tree := Text("orange-ish").FG(PaletteColor(214))
+	// :example
+
+	renderAndPrint("PaletteColor", tree, 20, 1)
+	// Output: orange-ish
 }
 
 // Custom rendering.
 // Escape hatch for custom rendering. Measure reports size, Render draws directly into the cell buffer.
 func ExampleWidget() {
-	Widget(
+	// example:
+	tree := Widget(
 		func(availW int16) (w, h int16) { return availW, 1 },
 		func(buf *Buffer, x, y, w, h int16) {
 			for i := int16(0); i < w; i++ {
@@ -546,6 +776,10 @@ func ExampleWidget() {
 			}
 		},
 	)
+	// :example
+
+	renderAndPrint("Widget", tree, 10, 1)
+	// Output: ==========
 }
 
 // Streaming log.
@@ -620,39 +854,64 @@ func ExampleJumpC_app() {
 // Compile a template.
 // Build compiles a UI tree into a Template. This is the same step that SetView performs internally. Useful for rendering into a Layer or for headless testing.
 func ExampleBuild() {
+	// example:
 	tmpl := Build(VBox(
 		Text("hello"),
 		Text("world"),
 	))
+	// :example
 
-	buf := NewBuffer(80, 24)
-	tmpl.Execute(buf, 80, 24)
+	buf := NewBuffer(20, 2)
+	tmpl.Execute(buf, 20, 2)
+	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
+	// Output:
+	// hello
+	// world
 }
 
 // Predefined theme.
 // CascadeStyle sets the base style for all descendants; individual elements can override with per-element styles.
 func ExampleThemeEx() {
+	// example:
 	theme := ThemeDark
-
-	VBox.CascadeStyle(&theme.Base).Border(BorderRounded).BorderFG(theme.Border.FG)(
+	tree := VBox.CascadeStyle(&theme.Base).Border(BorderRounded).BorderFG(theme.Border.FG)(
 		Text("normal text"),
 		Text("muted").Style(theme.Muted),
 		Text("accent").Style(theme.Accent),
 		Text("error!").Style(theme.Error),
 	)
+	// :example
+
+	renderAndPrint("ThemeEx", tree, 20, 6)
+	// Output:
+	// ╭──────────────────╮
+	// │normal text       │
+	// │muted             │
+	// │accent            │
+	// │error!            │
+	// ╰──────────────────╯
 }
 
 // Built-in borders.
 // Choose from BorderSingle, BorderRounded, or BorderDouble.
 func ExampleBorderStyle() {
-	VBox.Border(BorderDouble).BorderFG(Cyan)(
+	// example:
+	tree := VBox.Border(BorderDouble).BorderFG(Cyan)(
 		Text("double-bordered"),
 	)
+	// :example
+
+	renderAndPrint("BorderStyle", tree, 20, 3)
+	// Output:
+	// ╔══════════════════╗
+	// ║double-bordered   ║
+	// ╚══════════════════╝
 }
 
 // Custom borders.
 // Define custom borders with any rune for each edge and corner.
 func ExampleBorderStyle_custom() {
+	// example:
 	ascii := BorderStyle{
 		Horizontal:  '-',
 		Vertical:    '|',
@@ -661,32 +920,51 @@ func ExampleBorderStyle_custom() {
 		BottomLeft:  '+',
 		BottomRight: '+',
 	}
+	tree := VBox.Border(ascii)(Text("ascii box"))
+	// :example
 
-	VBox.Border(ascii)(Text("ascii box"))
+	renderAndPrint("BorderStyle_custom", tree, 20, 3)
+	// Output:
+	// +------------------+
+	// |ascii box         |
+	// +------------------+
 }
 
 // Text alignment.
 // Align is set via the Style struct. AlignLeft, AlignCenter, or AlignRight within a fixed width.
 func ExampleAlign() {
-	VBox(
+	// example:
+	tree := VBox(
 		Text("left-aligned"),
 		Text("centered").Style(Style{Align: AlignCenter}).Width(40),
 		Text("right-aligned").Style(Style{Align: AlignRight}).Width(40),
 	)
+	// :example
+
+	renderAndPrint("Align", tree, 40, 3)
+	// Output:
+	// left-aligned
+	//                 centered
+	//                            right-aligned
 }
 
 // Tab shapes.
 // Three tab styles: TabsStyleUnderline (default), TabsStyleBox, and TabsStyleBracket.
 func ExampleTabsStyle() {
+	// example:
 	var active int
 	tabs := []string{"Files", "Search", "Git"}
+	tree := Tabs(tabs, &active).Kind(TabsStyleBracket)
+	// :example
 
-	Tabs(tabs, &active).Kind(TabsStyleBracket)
+	renderAndPrint("TabsStyle", tree, 40, 1)
+	// Output: [Files]  [Search]  [Git]
 }
 
 // Custom layout.
 // Arrange lets you define a fully custom layout function. It receives child sizes and available space, returns rects.
 func ExampleArrange() {
+	// example:
 	grid := Arrange(func(children []ChildSize, w, h int) []Rect {
 		cols := 3
 		cellW := w / cols
@@ -701,21 +979,28 @@ func ExampleArrange() {
 		}
 		return rects
 	})
+	tree := grid(Text("a"), Text("b"), Text("c"))
+	// :example
 
-	grid(Text("a"), Text("b"), Text("c"))
+	renderAndPrint("Arrange", tree, 30, 2)
+	// Output: a         b         c
 }
 
 // Scoped helpers.
 // Define scopes local helper functions inside the view tree. The function runs at build time and returns a component.
 func ExampleDefine() {
+	// example:
 	a, b, c := true, false, true
-
-	Define(func() any {
+	tree := Define(func() any {
 		dot := func(v *bool) any {
 			return If(v).Then(Text("●").FG(Green)).Else(Text("○").FG(Red))
 		}
 		return HBox.Gap(1)(dot(&a), dot(&b), dot(&c))
 	})
+	// :example
+
+	renderAndPrint("Define", tree, 10, 1)
+	// Output: ● ○ ●
 }
 
 // Focus cycling.
@@ -750,7 +1035,12 @@ func ExampleTreeView() {
 // Case transform.
 // Transform text case via the Style struct. Transforms run at render time without modifying the source string.
 func ExampleTextTransform() {
-	Text("hello world").Style(Style{Transform: TransformUppercase})
+	// example:
+	tree := Text("hello world").Style(Style{Transform: TransformUppercase})
+	// :example
+
+	renderAndPrint("TextTransform", tree, 20, 1)
+	// Output: HELLO WORLD
 }
 
 // Registration form.
@@ -989,9 +1279,7 @@ func ExampleMatch() {
 	).Default(Text("unknown"))
 	// :example
 
-	buf := NewBuffer(20, 1)
-	Build(tree).Execute(buf, 20, 1)
-	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
+	renderAndPrint("Match", tree, 20, 1)
 	// Output: failure
 }
 
@@ -1007,9 +1295,7 @@ func ExampleMatch_ordered() {
 	)
 	// :example
 
-	buf := NewBuffer(20, 1)
-	Build(tree).Execute(buf, 20, 1)
-	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
+	renderAndPrint("Match_ordered", tree, 20, 1)
 	// Output: WARNING
 }
 
@@ -1025,8 +1311,6 @@ func ExampleMatch_where() {
 	)
 	// :example
 
-	buf := NewBuffer(20, 1)
-	Build(tree).Execute(buf, 20, 1)
-	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
+	renderAndPrint("Match_where", tree, 20, 1)
 	// Output: searching
 }

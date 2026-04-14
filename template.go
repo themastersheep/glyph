@@ -1875,6 +1875,8 @@ func (t *Template) compile(node any, parent int16, depth int, elemBase unsafe.Po
 	case *TextViewC:
 		t.collectBindings(v)
 		return t.compileTextViewC(v, parent, depth)
+	case *ScrollViewC:
+		return t.compileScrollViewC(v, parent, depth)
 	case *FilterLogC:
 		t.collectFocusManager(v)
 		return t.compileFilterLogC(v, parent, depth)
