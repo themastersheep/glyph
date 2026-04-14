@@ -974,3 +974,36 @@ func ExampleSEMonochrome_dodge() {
 func ExampleSEQuantize() {
 	ScreenEffect(SEQuantize(32))
 }
+
+// First-match-wins conditional.
+// Evaluates cases top-to-bottom; the first true case renders.
+func ExampleMatch() {
+	status := "error"
+	Match(&status,
+		Eq("ok", Text("all clear").FG(Green)),
+		Eq("warn", Text("warning").FG(Yellow)),
+		Eq("error", Text("failure").FG(Red)),
+	).Default(Text("unknown"))
+}
+
+// Ordered thresholds.
+// Order matters — the first matching case wins, so check the highest threshold first.
+func ExampleMatch_ordered() {
+	cpu := 85.0
+	Match(&cpu,
+		Gt(90.0, Text("CRITICAL").FG(Red)),
+		Gt(70.0, Text("WARNING").FG(Yellow)),
+		Lte(70.0, Text("OK").FG(Green)),
+	)
+}
+
+// Predicate matching.
+// Where accepts a function for cases that need custom logic.
+func ExampleMatch_where() {
+	query := "hello world"
+	Match(&query,
+		Eq("", Text("type to search")),
+		Where(func(q string) bool { return len(q) < 3 }, Text("keep typing...")),
+		Where(func(q string) bool { return len(q) >= 3 }, Text("searching")),
+	)
+}
