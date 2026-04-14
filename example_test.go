@@ -1,9 +1,11 @@
 package glyph_test
 
 import (
+	"fmt"
+	"strings"
+
 	. "github.com/kungfusheep/glyph"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -978,32 +980,53 @@ func ExampleSEQuantize() {
 // First-match-wins conditional.
 // Evaluates cases top-to-bottom; the first true case renders.
 func ExampleMatch() {
+	// example:
 	status := "error"
-	Match(&status,
-		Eq("ok", Text("all clear").FG(Green)),
-		Eq("warn", Text("warning").FG(Yellow)),
-		Eq("error", Text("failure").FG(Red)),
+	tree := Match(&status,
+		Eq("ok", Text("all clear")),
+		Eq("warn", Text("warning")),
+		Eq("error", Text("failure")),
 	).Default(Text("unknown"))
+	// :example
+
+	buf := NewBuffer(20, 1)
+	Build(tree).Execute(buf, 20, 1)
+	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
+	// Output: failure
 }
 
 // Ordered thresholds.
 // Order matters — the first matching case wins, so check the highest threshold first.
 func ExampleMatch_ordered() {
+	// example:
 	cpu := 85.0
-	Match(&cpu,
-		Gt(90.0, Text("CRITICAL").FG(Red)),
-		Gt(70.0, Text("WARNING").FG(Yellow)),
-		Lte(70.0, Text("OK").FG(Green)),
+	tree := Match(&cpu,
+		Gt(90.0, Text("CRITICAL")),
+		Gt(70.0, Text("WARNING")),
+		Lte(70.0, Text("OK")),
 	)
+	// :example
+
+	buf := NewBuffer(20, 1)
+	Build(tree).Execute(buf, 20, 1)
+	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
+	// Output: WARNING
 }
 
 // Predicate matching.
 // Where accepts a function for cases that need custom logic.
 func ExampleMatch_where() {
+	// example:
 	query := "hello world"
-	Match(&query,
+	tree := Match(&query,
 		Eq("", Text("type to search")),
 		Where(func(q string) bool { return len(q) < 3 }, Text("keep typing...")),
 		Where(func(q string) bool { return len(q) >= 3 }, Text("searching")),
 	)
+	// :example
+
+	buf := NewBuffer(20, 1)
+	Build(tree).Execute(buf, 20, 1)
+	fmt.Println(strings.TrimSpace(buf.StringTrimmed()))
+	// Output: searching
 }
