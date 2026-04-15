@@ -115,6 +115,12 @@ type Template struct {
 	// vertical clip: maximum Y coordinate for rendering (exclusive, 0 = no clip)
 	clipMaxY int16
 
+	// compile-time: tracks the outermost property pointer and collects
+	// nested tween items maps so the outermost condition can record
+	// per-item displayed values for transition detection
+	compilePropertyPtr    *Color
+	compileTweenItemsMaps []map[unsafe.Pointer]*perItemColorState
+
 	// Pending overlays to render after main content (cleared each frame)
 	pendingOverlays []pendingOverlay
 
@@ -547,14 +553,31 @@ func (t *Template) compileStyleDyn(baseStyle Style, styleDyn, fgDyn, bgDyn any, 
 
 func (t *Template) compileCondColor(cond conditionNode, elemBase unsafe.Pointer, elemSize uintptr) *Color {
 	storage := new(Color)
+
+	isOutermost := t.compilePropertyPtr == nil
+	if isOutermost {
+		t.compilePropertyPtr = storage
+		t.compileTweenItemsMaps = nil
+		defer func() {
+			t.compilePropertyPtr = nil
+			t.compileTweenItemsMaps = nil
+		}()
+	}
+
 	thenVal := cond.getThen()
 	elseVal := cond.getElse()
 
-	// recursively compile nested conditions and reactive pointers
+	// recursively compile nested conditions, tweens, and reactive pointers
 	resolveColor := func(v any) func() Color {
 		switch nested := v.(type) {
 		case conditionNode:
 			ptr := t.compileCondColor(nested, elemBase, elemSize)
+			return func() Color { return *ptr }
+		case tweenNode:
+			ptr, items := t.compileTweenColorItems(nested, elemBase, elemSize)
+			if items != nil {
+				t.compileTweenItemsMaps = append(t.compileTweenItemsMaps, items)
+			}
 			return func() Color { return *ptr }
 		case *Color:
 			return func() Color { return *nested }
@@ -590,6 +613,21 @@ func (t *Template) compileCondColor(cond conditionNode, elemBase unsafe.Pointer,
 			}
 		}
 		t.itemEvals = append(t.itemEvals, eval)
+
+		// outermost condition records per-item displayed value into nested tweens
+		if isOutermost && len(t.compileTweenItemsMaps) > 0 {
+			propPtr := storage
+			tweenMaps := t.compileTweenItemsMaps
+			t.itemEvals = append(t.itemEvals, func() {
+				displayed := *propPtr
+				key := t.elemBase
+				for _, items := range tweenMaps {
+					if state, ok := items[key]; ok {
+						state.lastDisplayed = displayed
+					}
+				}
+			})
+		}
 	} else {
 		root := t.evalRoot()
 		eval := func() {
@@ -610,11 +648,14 @@ func (t *Template) compileCondStyle(cond conditionNode, elemBase unsafe.Pointer,
 	thenVal := cond.getThen()
 	elseVal := cond.getElse()
 
-	// recursively compile nested conditions and reactive pointers
+	// recursively compile nested conditions, tweens, and reactive pointers
 	resolveStyle := func(v any) func() Style {
 		switch nested := v.(type) {
 		case conditionNode:
 			ptr := t.compileCondStyle(nested, elemBase, elemSize)
+			return func() Style { return *ptr }
+		case tweenNode:
+			ptr := t.compileTweenStyle(nested, elemBase, elemSize)
 			return func() Style { return *ptr }
 		case *Style:
 			return func() Style { return *nested }
@@ -1045,9 +1086,10 @@ func (t *Template) resolveTweenTargetInt8(target any) *int8 {
 
 type perItemColorState struct {
 	lastTarget Color
-	startVal   Color
-	current    Color
-	startTime  time.Time
+	startVal      Color
+	current       Color
+	startTime     time.Time
+	lastDisplayed Color // what the property actually showed for this item last frame
 }
 
 type perItemStyleState struct {
@@ -1057,7 +1099,20 @@ type perItemStyleState struct {
 	startTime  time.Time
 }
 
+func (t *Template) compileTweenColorItems(tw tweenNode, elemBase unsafe.Pointer, elemSize uintptr) (*Color, map[unsafe.Pointer]*perItemColorState) {
+	items := make(map[unsafe.Pointer]*perItemColorState)
+	ptr := t.compileTweenColorInner(tw, elemBase, elemSize, items)
+	if elemBase == nil || elemSize == 0 {
+		return ptr, nil // not ForEach, no per-item tracking
+	}
+	return ptr, items
+}
+
 func (t *Template) compileTweenColor(tw tweenNode, elemBase unsafe.Pointer, elemSize uintptr) *Color {
+	return t.compileTweenColorInner(tw, elemBase, elemSize, nil)
+}
+
+func (t *Template) compileTweenColorInner(tw tweenNode, elemBase unsafe.Pointer, elemSize uintptr, sharedItems map[unsafe.Pointer]*perItemColorState) *Color {
 	root := t.evalRoot()
 	watchPtr := t.resolveTweenTargetColor(tw.getTarget(), elemBase, elemSize)
 	storage := new(Color)
@@ -1071,7 +1126,10 @@ func (t *Template) compileTweenColor(tw tweenNode, elemBase unsafe.Pointer, elem
 	inForEach := elemBase != nil && elemSize > 0
 
 	if inForEach {
-		items := make(map[unsafe.Pointer]*perItemColorState)
+		items := sharedItems
+		if items == nil {
+			items = make(map[unsafe.Pointer]*perItemColorState)
+		}
 		t.itemEvals = append(t.itemEvals, func() {
 			dur := durVal
 			if durPtr != nil {
@@ -1084,6 +1142,13 @@ func (t *Template) compileTweenColor(tw tweenNode, elemBase unsafe.Pointer, elem
 			if !ok {
 				state = &perItemColorState{lastTarget: target, current: target}
 				items[key] = state
+			}
+			// if the property was displaying a different value last frame
+			// (e.g. a parent condition's Then branch was active), animate from there
+			if state.lastDisplayed != (Color{}) && state.lastDisplayed != state.current {
+				state.startVal = state.lastDisplayed
+				state.current = state.lastDisplayed
+				state.startTime = now
 			}
 			if target != state.lastTarget {
 				state.startVal = state.current
@@ -6025,6 +6090,28 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 			if feExt.elemIsPtr {
 				elemPtr = *(*unsafe.Pointer)(elemPtr)
 			}
+
+			// run per-item evaluators so conditions/tweens resolve for this item
+			feExt.iterTmpl.elemBase = elemPtr
+			for _, eval := range feExt.iterTmpl.itemEvals {
+				eval()
+			}
+
+			// apply dynamic fills on root container before rendering
+			if len(feExt.iterTmpl.ops) > 0 {
+				rootOp := &feExt.iterTmpl.ops[0]
+				if rootOp.Kind == OpContainer {
+					rootGeom := &feExt.iterTmpl.geom[0]
+					fillColor := rootOp.fill()
+					if fillColor.Mode != ColorDefault {
+						bx := int(itemAbsX) + int(rootOp.Margin[3])
+						by := int(itemAbsY) + int(rootOp.Margin[0])
+						bw := int(rootGeom.W) - int(rootOp.marginH())
+						bh := int(rootGeom.H) - int(rootOp.marginV())
+						buf.FillRect(bx, by, bw, bh, Cell{Rune: ' ', Style: Style{BG: fillColor}})
+					}
+				}
+			}
 			t.renderSubTemplate(buf, feExt.iterTmpl, itemAbsX, itemAbsY, itemGeom.W, elemPtr)
 		}
 
@@ -6661,6 +6748,21 @@ func (t *Template) renderSelectionList(buf *Buffer, op *Op, geom *Geom, absX, ab
 					ext.iterTmpl.rowBG = defaultStyle.BG
 					ext.iterTmpl.rowFG = defaultStyle.FG
 					ext.iterTmpl.rowAttr = defaultStyle.Attr
+				}
+				// apply dynamic fills on root container before rendering
+				if len(ext.iterTmpl.ops) > 0 {
+					rootOp := &ext.iterTmpl.ops[0]
+					if rootOp.Kind == OpContainer {
+						rootGeom := &ext.iterTmpl.geom[0]
+						fillColor := rootOp.fill()
+						if fillColor.Mode != ColorDefault {
+							bx := int(contentX) + int(rootOp.Margin[3])
+							by := y + int(rootOp.Margin[0])
+							bw := int(rootGeom.W) - int(rootOp.marginH())
+							bh := int(rootGeom.H) - int(rootOp.marginV())
+							buf.FillRect(bx, by, bw, bh, Cell{Rune: ' ', Style: Style{BG: fillColor}})
+						}
+					}
 				}
 				t.renderSubTemplate(buf, ext.iterTmpl, contentX, int16(y), contentW, elemPtr)
 			} else {

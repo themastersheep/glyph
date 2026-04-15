@@ -33,7 +33,7 @@ type FormC struct {
 	labelStyle   Style
 	grow         float32
 	margin       [4]int16
-	onSubmit     func()
+	onSubmit     func(*FormC)
 	gapPtr       *int8
 	flexGrowPtr  *float32
 	gapCond      conditionNode
@@ -45,7 +45,9 @@ type FormFn func(fields ...FormField) *FormC
 // Form creates a form from labeled fields with aligned labels
 // and automatic focus management. Configure with methods, then call with fields.
 //
-//	Form.LabelBold().OnSubmit(register)(
+//	Form.LabelBold().OnSubmit(func(f *FormC) {
+//	    // handle submission, call f.Reset() etc.
+//	})(
 //	    Field("Name", Input().Placeholder("Enter your name")),
 //	    Field("Email", Input().Placeholder("you@example.com")),
 //	    Field("Password", Input().Placeholder("password").Mask('*')),
@@ -190,7 +192,8 @@ func (f FormFn) OnFocusChange(fn func(index int)) FormFn {
 }
 
 // OnSubmit sets a callback that fires when Enter is pressed.
-func (f FormFn) OnSubmit(fn func()) FormFn {
+// The form instance is passed so the callback can call Reset, read values, etc.
+func (f FormFn) OnSubmit(fn func(*FormC)) FormFn {
 	return func(fields ...FormField) *FormC {
 		form := f(fields...)
 		form.onSubmit = fn
@@ -316,7 +319,8 @@ func (f *FormC) toTemplate() any {
 // Tab/Shift-Tab are handled by the FocusManager in wireBindings.
 func (f *FormC) bindings() []binding {
 	if f.onSubmit != nil {
-		enterBinding := binding{pattern: "<Enter>", handler: f.onSubmit}
+		cb := f.onSubmit
+		enterBinding := binding{pattern: "<Enter>", handler: func() { cb(f) }}
 		f.fm.subBindings = append(f.fm.subBindings, enterBinding)
 		return []binding{enterBinding}
 	}

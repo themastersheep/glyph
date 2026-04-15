@@ -13,9 +13,8 @@ func main() {
 	agree := false
 	status := "Tab: next | j/k: radio | Space: checkbox | Enter: submit"
 
-	var form *FormC
-	register := func() {
-		if form.ValidateAll() {
+	register := func(f *FormC) {
+		if f.ValidateAll() {
 			roles := []string{"Admin", "User", "Guest"}
 			status = fmt.Sprintf("Registered: %s <%s> as %s", name, email, roles[role])
 		} else {
@@ -23,7 +22,7 @@ func main() {
 		}
 	}
 
-	form = Form.LabelBold().OnSubmit(register)(
+	form := Form.LabelBold().OnSubmit(register)(
 		Field("Name", Input(&name).Validate(VRequired, VOnBlur)),
 		Field("Email", Input(&email).Validate(VEmail, VOnBlur)),
 		Field("Role", Radio(&role, "Admin", "User", "Guest")),

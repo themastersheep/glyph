@@ -64,9 +64,14 @@ func (f ScrollViewFn) MarginVH(v, h int16) ScrollViewFn {
 	}
 }
 
-// Ref captures a reference to this ScrollView via a callback,
-// allowing inline assignment during view composition.
-func (sv *ScrollViewC) Ref(f func(*ScrollViewC)) *ScrollViewC { f(sv); return sv }
+// Ref captures a reference to the ScrollView via a callback during construction.
+func (f ScrollViewFn) Ref(fn func(*ScrollViewC)) ScrollViewFn {
+	return func(children ...any) *ScrollViewC {
+		sv := f(children...)
+		fn(sv)
+		return sv
+	}
+}
 
 // Layer returns the underlying layer for scroll control wiring.
 func (sv *ScrollViewC) Layer() *Layer {
@@ -101,27 +106,29 @@ func (sv *ScrollViewC) render() {
 		return
 	}
 
-	// build child template once (or rebuild if children change via Refresh)
 	if sv.childTmpl == nil {
 		sv.childTmpl = Build(VBox(sv.children...))
 	}
 
-	// run full layout pipeline to get natural content height
-	sv.childTmpl.distributeWidths(int16(w), nil)
-	sv.childTmpl.layout(32000) // large height so children aren't constrained
+	// use a generous height so content isn't clipped, then trim to actual
+	h := sv.layer.ViewportHeight()
+	if h < 500 {
+		h = 500
+	}
 
-	contentH := int(sv.childTmpl.geom[0].ContentH)
+	buf := NewBuffer(w, h)
+	buf.defaultStyle = sv.layer.defaultStyle
+	buf.Clear()
+	sv.childTmpl.Execute(buf, int16(w), int16(h))
+
+	// trim to actual content (or at least viewport height)
+	contentH := buf.ContentHeight()
 	if contentH < sv.layer.ViewportHeight() {
 		contentH = sv.layer.ViewportHeight()
 	}
-
-	sv.childTmpl.distributeFlexGrow(int16(contentH))
-
-	// render into a buffer sized to the actual content
-	buf := NewBuffer(w, contentH)
-	buf.defaultStyle = sv.layer.defaultStyle
-	buf.Clear()
-	sv.childTmpl.render(buf, 0, 0, int16(w))
+	if contentH < h {
+		buf.Resize(w, contentH)
+	}
 
 	sv.layer.SetBuffer(buf)
 }

@@ -110,8 +110,9 @@ const (
 
 // ConditionEval holds a prepared condition awaiting Then/Else branches.
 type ConditionEval[T comparable] struct {
-	ptr    *T
-	offset uintptr // offset from element base (for ForEach)
+	ptr       *T
+	offset    uintptr // offset from element base (for ForEach)
+	hasOffset bool
 	op     condOp
 	val    T
 	then   any
@@ -146,12 +147,12 @@ func (e *ConditionEval[T]) evaluate() bool { return e.compare(*e.ptr) }
 func (e *ConditionEval[T]) getThen() any { return e.then }
 func (e *ConditionEval[T]) getElse() any { return e.els }
 
-func (e *ConditionEval[T]) setOffset(offset uintptr) { e.offset = offset }
+func (e *ConditionEval[T]) setOffset(offset uintptr) { e.offset = offset; e.hasOffset = true }
 func (e *ConditionEval[T]) getPtrAddr() uintptr      { return uintptr(unsafe.Pointer(e.ptr)) }
 
 // evaluateWithBase evaluates the condition using an adjusted pointer (for ForEach)
 func (e *ConditionEval[T]) evaluateWithBase(base unsafe.Pointer) bool {
-	if e.offset == 0 {
+	if !e.hasOffset {
 		return e.evaluate()
 	}
 	return e.compare(*(*T)(unsafe.Add(base, e.offset)))
@@ -159,8 +160,9 @@ func (e *ConditionEval[T]) evaluateWithBase(base unsafe.Pointer) bool {
 
 // OrdConditionEval holds a prepared ordered condition awaiting Then/Else branches.
 type OrdConditionEval[T cmp.Ordered] struct {
-	ptr    *T
-	offset uintptr // offset from element base (for ForEach)
+	ptr       *T
+	offset    uintptr // offset from element base (for ForEach)
+	hasOffset bool
 	op     condOp
 	val    T
 	then   any
@@ -203,12 +205,12 @@ func (e *OrdConditionEval[T]) evaluate() bool { return e.compare(*e.ptr) }
 func (e *OrdConditionEval[T]) getThen() any { return e.then }
 func (e *OrdConditionEval[T]) getElse() any { return e.els }
 
-func (e *OrdConditionEval[T]) setOffset(offset uintptr) { e.offset = offset }
+func (e *OrdConditionEval[T]) setOffset(offset uintptr) { e.offset = offset; e.hasOffset = true }
 func (e *OrdConditionEval[T]) getPtrAddr() uintptr      { return uintptr(unsafe.Pointer(e.ptr)) }
 
 // evaluateWithBase evaluates the condition using an adjusted pointer (for ForEach)
 func (e *OrdConditionEval[T]) evaluateWithBase(base unsafe.Pointer) bool {
-	if e.offset == 0 {
+	if !e.hasOffset {
 		return e.evaluate()
 	}
 	return e.compare(*(*T)(unsafe.Add(base, e.offset)))

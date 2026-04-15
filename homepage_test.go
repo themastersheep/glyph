@@ -182,7 +182,7 @@ func TestHomepage_formsWithValidation(t *testing.T) {
 	role := 0
 	agree := false
 
-	register := func() {}
+	register := func(*FormC) {}
 
 	_ = Form.LabelBold().OnSubmit(register)(
 		Field("Name", Input(&name).Validate(VRequired, VOnBlur)),
