@@ -794,8 +794,8 @@ func ExampleApp_multiView() {
 	// press n for next
 }
 
-// Goroutine updates.
-// Mutate the value behind the pointer from any goroutine, then call RequestRender to trigger a redraw.
+// Background updates.
+// Mutate state, then call RequestRender to trigger a redraw.
 func ExampleApp_goroutine() {
 	// example:
 	app := NewApp()
@@ -883,6 +883,41 @@ func ExampleStyle_margin() {
 
 	renderAndPrint("Style_margin", tree, 20, 3)
 	// Output: margined text
+}
+
+// Container padding.
+// Padding adds space between a container's border and its content. Set on VBox, HBox, or any container.
+func ExampleVBoxFn_padding() {
+	// example:
+	tree := VBox.Padding(1).Border(BorderRounded)(
+		Text("padded content"),
+	)
+	// :example
+
+	renderAndPrint("VBoxFn_padding", tree, 20, 5)
+	// Output:
+	// ╭──────────────────╮
+	// │                  │
+	// │ padded content   │
+	// │                  │
+	// ╰──────────────────╯
+}
+
+// Horizontal padding.
+// PaddingVH sets vertical and horizontal padding separately.
+func ExampleHBoxFn_padding() {
+	// example:
+	tree := HBox.PaddingVH(0, 2).Border(BorderRounded).Gap(2)(
+		Text("left"),
+		Text("right"),
+	)
+	// :example
+
+	renderAndPrint("HBoxFn_padding", tree, 24, 3)
+	// Output:
+	// ╭──────────────────────╮
+	// │  left  right         │
+	// ╰──────────────────────╯
 }
 
 // Hex colour.
@@ -1409,16 +1444,29 @@ func ExampleFormFn_mixedControls() {
 func ExampleScreenEffect() {
 	// example:
 	tree := VBox(
-		VBox.Border(BorderRounded)(Text("hello")),
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("● online").FG(Green),
+				Text("  "),
+				Text("■ queue: 42").FG(Yellow),
+			),
+			HBox(
+				Text("cpu ").FG(Cyan),
+				Text("████░░░░").FG(RGB(100, 200, 255)),
+			),
+			Text("ready").FG(RGB(200, 196, 184)),
+		),
 		ScreenEffect(SEVignette()),
 	)
 	// :example
 
-	renderWithEffects("ScreenEffect", tree, 20, 3)
+	renderWithEffects("ScreenEffect", tree, 40, 5)
 	// Output:
-	// ╭──────────────────╮
-	// │hello             │
-	// ╰──────────────────╯
+	// ╭──────────────────────────────────────╮
+	// │● online  ■ queue: 42                 │
+	// │cpu ████░░░░                          │
+	// │ready                                 │
+	// ╰──────────────────────────────────────╯
 }
 
 // Stacked effects.
@@ -1426,7 +1474,17 @@ func ExampleScreenEffect() {
 func ExampleScreenEffect_multiple() {
 	// example:
 	tree := VBox(
-		Text("styled text").FG(Cyan),
+		HBox(
+			Text("● red").FG(Red),
+			Text("  "),
+			Text("● green").FG(Green),
+			Text("  "),
+			Text("● blue").FG(Blue),
+		),
+		HBox(
+			Text("████████").FG(RGB(255, 200, 50)),
+			Text("████████").FG(RGB(50, 200, 255)),
+		),
 		ScreenEffect(
 			SEDesaturate().Strength(0.5),
 			SETint(Hex(0xFF6600)).Strength(0.1),
@@ -1434,8 +1492,10 @@ func ExampleScreenEffect_multiple() {
 	)
 	// :example
 
-	renderWithEffects("ScreenEffect_multiple", tree, 20, 1)
-	// Output: styled text
+	renderWithEffects("ScreenEffect_multiple", tree, 40, 2)
+	// Output:
+	// ● red  ● green  ● blue
+	// ████████████████
 }
 
 // Conditional effect.
@@ -1444,13 +1504,18 @@ func ExampleScreenEffect_conditional() {
 	// example:
 	dimmed := true
 	tree := VBox(
-		Text("dimmed scene"),
+		HBox(
+			Text("● status").FG(Green),
+			Text("  "),
+			Text("████").FG(Cyan),
+			Text("░░░░").FG(RGB(80, 80, 80)),
+		),
 		If(&dimmed).Then(ScreenEffect(SEDimAll())),
 	)
 	// :example
 
-	renderWithEffects("ScreenEffect_conditional", tree, 20, 1)
-	// Output: dimmed scene
+	renderWithEffects("ScreenEffect_conditional", tree, 30, 1)
+	// Output: ● status  ████░░░░
 }
 
 // Per-cell transform.
@@ -1458,8 +1523,10 @@ func ExampleScreenEffect_conditional() {
 func ExampleEachCell() {
 	// example:
 	tree := VBox(
-		Text("even row"),
-		Text("odd row"),
+		HBox(Text("row 0 ").FG(Cyan), Text("████").FG(RGB(200, 100, 50))),
+		HBox(Text("row 1 ").FG(Green), Text("████").FG(RGB(50, 100, 200))),
+		HBox(Text("row 2 ").FG(Yellow), Text("████").FG(RGB(200, 50, 100))),
+		HBox(Text("row 3 ").FG(Magenta), Text("████").FG(RGB(100, 200, 50))),
 		EachCell(func(x, y int, c Cell, ctx PostContext) Cell {
 			if y%2 == 0 {
 				c.Style.Attr = c.Style.Attr.With(AttrDim)
@@ -1469,10 +1536,12 @@ func ExampleEachCell() {
 	)
 	// :example
 
-	renderWithEffects("EachCell", tree, 20, 2)
+	renderWithEffects("EachCell", tree, 30, 4)
 	// Output:
-	// even row
-	// odd row
+	// row 0 ████
+	// row 1 ████
+	// row 2 ████
+	// row 3 ████
 }
 
 // Blend mode wrapper.
@@ -1480,13 +1549,20 @@ func ExampleEachCell() {
 func ExampleWithBlend() {
 	// example:
 	tree := VBox(
-		Text("blended").FG(RGB(200, 200, 200)),
+		HBox(
+			Text("████").FG(RGB(255, 100, 50)),
+			Text("████").FG(RGB(50, 255, 100)),
+			Text("████").FG(RGB(50, 100, 255)),
+		),
+		Text("blended glow").FG(RGB(200, 200, 200)),
 		ScreenEffect(WithBlend(BlendScreen, SEBloom())),
 	)
 	// :example
 
-	renderWithEffects("WithBlend", tree, 20, 1)
-	// Output: blended
+	renderWithEffects("WithBlend", tree, 30, 2)
+	// Output:
+	// ████████████
+	// blended glow
 }
 
 // Quantize wrapper.
@@ -1494,13 +1570,20 @@ func ExampleWithBlend() {
 func ExampleWithQuantize() {
 	// example:
 	tree := VBox(
-		Text("quantized").FG(RGB(200, 200, 200)),
+		HBox(
+			Text("████").FG(RGB(255, 100, 50)),
+			Text("████").FG(RGB(50, 255, 100)),
+			Text("████").FG(RGB(50, 100, 255)),
+		),
+		Text("quantized bloom").FG(RGB(200, 200, 200)),
 		ScreenEffect(WithQuantize(32, SEBloom())),
 	)
 	// :example
 
-	renderWithEffects("WithQuantize", tree, 20, 1)
-	// Output: quantized
+	renderWithEffects("WithQuantize", tree, 30, 2)
+	// Output:
+	// ████████████
+	// quantized bloom
 }
 
 // Manual colour blend.
@@ -1525,129 +1608,585 @@ func ExampleBlendColor() {
 func ExampleSEDimAll() {
 	// example:
 	tree := VBox(
-		Text("everything is dimmed"),
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("● active").FG(Green),
+				Text("  "),
+				Text("████").FG(Cyan),
+				Text("░░░░").FG(RGB(80, 80, 80)),
+			),
+			Text("everything is dimmed").FG(RGB(200, 196, 184)),
+		),
 		ScreenEffect(SEDimAll()),
 	)
 	// :example
 
-	renderWithEffects("SEDimAll", tree, 25, 1)
-	// Output: everything is dimmed
+	renderWithEffects("SEDimAll", tree, 40, 4)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │● active  ████░░░░                    │
+	// │everything is dimmed                  │
+	// ╰──────────────────────────────────────╯
 }
 
 // Warm colour grade.
 func ExampleSETint() {
-	ScreenEffect(SETint(Hex(0xFF6600)).Strength(0.15))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("● online").FG(Green),
+				Text("  "),
+				Text("■ queue: 42").FG(Yellow),
+			),
+			HBox(
+				Text("████").FG(Cyan),
+				Text("████").FG(RGB(100, 200, 255)),
+				Text("░░░░").FG(RGB(80, 80, 80)),
+			),
+			Text("warm tinted").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SETint(Hex(0xFF6600)).Strength(0.15)),
+	)
+	// :example
+
+	renderWithEffects("SETint", tree, 40, 5)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │● online  ■ queue: 42                 │
+	// │████████░░░░                          │
+	// │warm tinted                           │
+	// ╰──────────────────────────────────────╯
 }
 
 // Tint that spares a focused panel.
 func ExampleSETint_dodge() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SETint(Hex(0x0066FF)).Strength(0.3).Dodge(&panel))
+	tree := VBox(
+		Text("tinted background").FG(RGB(180, 180, 180)),
+		VBox.Border(BorderRounded).NodeRef(&panel)(
+			Text("untinted panel").FG(Green),
+			Text("████████").FG(Cyan),
+		),
+		Text("also tinted").FG(Yellow),
+		ScreenEffect(SETint(Hex(0x0066FF)).Strength(0.3).Dodge(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SETint_dodge", tree, 40, 5)
+	// Output:
+	// tinted background
+	// ╭──────────────────────────────────────╮
+	// │untinted panel                        │
+	// │████████                              │
+	// ╰──────────────────────────────────────╯
 }
 
 // Cinematic edge darkening.
 func ExampleSEVignette() {
-	ScreenEffect(SEVignette().Strength(0.7))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("● red").FG(Red),
+				Text("  "),
+				Text("● green").FG(Green),
+				Text("  "),
+				Text("● blue").FG(Blue),
+			),
+			HBox(
+				Text("████").FG(RGB(255, 100, 50)),
+				Text("████").FG(RGB(50, 255, 100)),
+				Text("████").FG(RGB(50, 100, 255)),
+				Text("████").FG(RGB(255, 255, 50)),
+			),
+			Text("edges darken toward black").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SEVignette().Strength(0.7)),
+	)
+	// :example
+
+	renderWithEffects("SEVignette", tree, 40, 5)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │● red  ● green  ● blue                │
+	// │████████████████                      │
+	// │edges darken toward black             │
+	// ╰──────────────────────────────────────╯
 }
 
 // Vignette centred on a panel.
 func ExampleSEVignette_focus() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEVignette().Focus(&panel))
+	tree := VBox(
+		Text("dim edges").FG(RGB(180, 180, 180)),
+		VBox.Border(BorderRounded).NodeRef(&panel)(
+			Text("focus centre").FG(Green),
+			Text("████████").FG(Cyan),
+		),
+		Text("dim edges").FG(RGB(180, 180, 180)),
+		ScreenEffect(SEVignette().Focus(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEVignette_focus", tree, 40, 6)
+	// Output:
+	// dim edges
+	// ╭──────────────────────────────────────╮
+	// │focus centre                          │
+	// │████████                              │
+	// ╰──────────────────────────────────────╯
+	// dim edges
 }
 
 // Vignette that skips a panel.
 func ExampleSEVignette_dodge() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEVignette().Dodge(&panel))
+	tree := VBox(
+		Text("darkened by vignette").FG(RGB(200, 200, 200)),
+		VBox.Border(BorderRounded).NodeRef(&panel)(
+			Text("exempt from vignette").FG(Green),
+			Text("████████").FG(Cyan),
+		),
+		Text("also darkened").FG(RGB(200, 200, 200)),
+		ScreenEffect(SEVignette().Dodge(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEVignette_dodge", tree, 40, 6)
+	// Output:
+	// darkened by vignette
+	// ╭──────────────────────────────────────╮
+	// │exempt from vignette                  │
+	// │████████                              │
+	// ╰──────────────────────────────────────╯
+	// also darkened
 }
 
 // Smooth vignette without quantization.
 func ExampleSEVignette_smooth() {
-	ScreenEffect(SEVignette().Smooth().Strength(0.6))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("████").FG(RGB(255, 100, 50)),
+				Text("████").FG(RGB(50, 255, 100)),
+				Text("████").FG(RGB(50, 100, 255)),
+			),
+			Text("smooth gradient").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SEVignette().Smooth().Strength(0.6)),
+	)
+	// :example
+
+	renderWithEffects("SEVignette_smooth", tree, 40, 4)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │████████████                          │
+	// │smooth gradient                       │
+	// ╰──────────────────────────────────────╯
 }
 
 // Wash out colour.
 func ExampleSEDesaturate() {
-	ScreenEffect(SEDesaturate().Strength(0.8))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("● red").FG(Red),
+				Text("  "),
+				Text("● green").FG(Green),
+				Text("  "),
+				Text("● blue").FG(Blue),
+			),
+			HBox(
+				Text("████").FG(RGB(255, 100, 50)),
+				Text("████").FG(RGB(50, 255, 100)),
+				Text("████").FG(RGB(50, 100, 255)),
+			),
+			Text("colours washed out").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SEDesaturate().Strength(0.8)),
+	)
+	// :example
+
+	renderWithEffects("SEDesaturate", tree, 40, 5)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │● red  ● green  ● blue                │
+	// │████████████                          │
+	// │colours washed out                    │
+	// ╰──────────────────────────────────────╯
 }
 
 // Colour spotlight — grey world, one panel in colour.
 func ExampleSEDesaturate_dodge() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEDesaturate().Dodge(&panel))
+	tree := VBox(
+		HBox(
+			Text("████").FG(Red),
+			Text("████").FG(Yellow),
+		),
+		VBox.Border(BorderRounded).NodeRef(&panel)(
+			Text("colour preserved").FG(Green),
+			Text("████████").FG(Cyan),
+		),
+		HBox(
+			Text("████").FG(Magenta),
+			Text("████").FG(Blue),
+		),
+		ScreenEffect(SEDesaturate().Dodge(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEDesaturate_dodge", tree, 40, 6)
+	// Output:
+	// ████████
+	// ╭──────────────────────────────────────╮
+	// │colour preserved                      │
+	// │████████                              │
+	// ╰──────────────────────────────────────╯
+	// ████████
 }
 
 // Punch up contrast.
 func ExampleSEContrast() {
-	ScreenEffect(SEContrast().Strength(2.0))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("████").FG(RGB(180, 100, 80)),
+				Text("████").FG(RGB(80, 180, 100)),
+				Text("████").FG(RGB(100, 80, 180)),
+			),
+			Text("midtones pushed to extremes").FG(RGB(150, 150, 150)),
+		),
+		ScreenEffect(SEContrast().Strength(2.0)),
+	)
+	// :example
+
+	renderWithEffects("SEContrast", tree, 40, 4)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │████████████                          │
+	// │midtones pushed to extremes           │
+	// ╰──────────────────────────────────────╯
 }
 
 // Contrast that spares a panel.
 func ExampleSEContrast_dodge() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEContrast().Dodge(&panel))
+	tree := VBox(
+		Text("high contrast").FG(RGB(150, 150, 150)),
+		VBox.Border(BorderRounded).NodeRef(&panel)(
+			Text("normal contrast").FG(RGB(150, 150, 150)),
+			Text("████████").FG(RGB(100, 180, 100)),
+		),
+		Text("high contrast").FG(RGB(150, 150, 150)),
+		ScreenEffect(SEContrast().Strength(2.0).Dodge(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEContrast_dodge", tree, 40, 6)
+	// Output:
+	// high contrast
+	// ╭──────────────────────────────────────╮
+	// │normal contrast                       │
+	// │████████                              │
+	// ╰──────────────────────────────────────╯
+	// high contrast
 }
 
 // Dim everything outside a node.
 func ExampleSEFocusDim() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEFocusDim(&panel))
+	tree := VBox(
+		HBox(
+			Text("████").FG(Red),
+			Text(" dimmed ").FG(RGB(200, 200, 200)),
+			Text("████").FG(Yellow),
+		),
+		VBox.Border(BorderRounded).NodeRef(&panel)(
+			Text("focused panel").FG(Green),
+			Text("████████").FG(Cyan),
+		),
+		HBox(
+			Text("████").FG(Magenta),
+			Text(" dimmed ").FG(RGB(200, 200, 200)),
+			Text("████").FG(Blue),
+		),
+		ScreenEffect(SEFocusDim(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEFocusDim", tree, 40, 6)
+	// Output:
+	// ████ dimmed ████
+	// ╭──────────────────────────────────────╮
+	// │focused panel                         │
+	// │████████                              │
+	// ╰──────────────────────────────────────╯
+	// ████ dimmed ████
 }
 
 // Remap colours through a three-stop gradient.
 func ExampleSEGradientMap() {
-	ScreenEffect(SEGradientMap(
-		RGB(0, 0, 50),      // shadows → deep blue
-		RGB(0, 128, 128),   // midtones → teal
-		RGB(200, 255, 200), // highlights → mint
-	))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("████").FG(RGB(40, 40, 40)),
+				Text("████").FG(RGB(128, 128, 128)),
+				Text("████").FG(RGB(240, 240, 240)),
+			),
+			Text("shadows→blue  mids→teal  highs→mint").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SEGradientMap(
+			RGB(0, 0, 50),
+			RGB(0, 128, 128),
+			RGB(200, 255, 200),
+		)),
+	)
+	// :example
+
+	renderWithEffects("SEGradientMap", tree, 40, 4)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │████████████                          │
+	// │shadows→blue  mids→teal  highs→mint   │
+	// ╰──────────────────────────────────────╯
 }
 
 // Directional drop shadow behind a panel.
 func ExampleSEDropShadow() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEDropShadow().Focus(&panel))
+	tree := VBox(
+		Text(""),
+		HBox(
+			Text("   "),
+			VBox.Border(BorderRounded).NodeRef(&panel)(
+				Text("shadowed panel").FG(Green),
+				Text("████████").FG(Cyan),
+			),
+		),
+		Text(""),
+		Text(""),
+		ScreenEffect(SEDropShadow().Focus(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEDropShadow", tree, 40, 7)
+	// Output:
+	//
+	//    ╭───────────────────────────────────╮
+	//    │shadowed panel                     │
+	//    │████████                           │
+	//    ╰───────────────────────────────────╯
 }
 
 // Symmetric glow — offset(0,0) centres the shadow source on the panel.
 func ExampleSEDropShadow_glow() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEDropShadow().Focus(&panel).Offset(0, 0).Strength(0.4).Radius(12))
+	tree := VBox(
+		Text(""),
+		HBox(
+			Text("   "),
+			VBox.Border(BorderRounded).NodeRef(&panel)(
+				Text("glowing panel").FG(RGB(255, 200, 50)),
+				Text("████████").FG(RGB(255, 150, 50)),
+			),
+		),
+		Text(""),
+		Text(""),
+		ScreenEffect(SEDropShadow().Focus(&panel).Offset(0, 0).Strength(0.4).Radius(12)),
+	)
+	// :example
+
+	renderWithEffects("SEDropShadow_glow", tree, 40, 7)
+	// Output:
+	//
+	//    ╭───────────────────────────────────╮
+	//    │glowing panel                      │
+	//    │████████                           │
+	//    ╰───────────────────────────────────╯
 }
 
 // Colour-sampling glow that reads the panel's edge colours and spills them outward.
 func ExampleSEGlow() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEGlow().Focus(&panel))
+	tree := VBox(
+		Text(""),
+		HBox(
+			Text("   "),
+			VBox.Border(BorderRounded).NodeRef(&panel)(
+				Text("glow source").FG(RGB(100, 255, 100)),
+				Text("████████").FG(RGB(50, 200, 255)),
+			),
+		),
+		Text(""),
+		Text(""),
+		ScreenEffect(SEGlow().Focus(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEGlow", tree, 40, 7)
+	// Output:
+	//
+	//    ╭───────────────────────────────────╮
+	//    │glow source                        │
+	//    │████████                           │
+	//    ╰───────────────────────────────────╯
 }
 
 // Bloom around bright cells.
 func ExampleSEBloom() {
-	ScreenEffect(SEBloom().Threshold(0.6).Strength(0.3))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("████").FG(RGB(255, 255, 200)),
+				Text("    "),
+				Text("████").FG(RGB(200, 255, 255)),
+			),
+			Text("dim text").FG(RGB(60, 60, 60)),
+			Text("bright cells glow outward").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SEBloom().Threshold(0.6).Strength(0.3)),
+	)
+	// :example
+
+	renderWithEffects("SEBloom", tree, 40, 5)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │████    ████                          │
+	// │dim text                              │
+	// │bright cells glow outward             │
+	// ╰──────────────────────────────────────╯
 }
 
 // Bloom constrained to a panel.
 func ExampleSEBloom_focus() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEBloom().Focus(&panel))
+	tree := VBox(
+		HBox(
+			Text("████").FG(RGB(255, 255, 200)),
+			Text(" no bloom here "),
+		),
+		VBox.Border(BorderRounded).NodeRef(&panel)(
+			Text("████").FG(RGB(255, 255, 200)),
+			Text("bloom only here").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SEBloom().Focus(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEBloom_focus", tree, 40, 5)
+	// Output:
+	// ████ no bloom here
+	// ╭──────────────────────────────────────╮
+	// │████                                  │
+	// │bloom only here                       │
+	// ╰──────────────────────────────────────╯
 }
 
 // Green phosphor monochrome.
 func ExampleSEMonochrome() {
-	ScreenEffect(SEMonochrome(RGB(0, 255, 80)))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("● red").FG(Red),
+				Text("  "),
+				Text("● green").FG(Green),
+				Text("  "),
+				Text("● blue").FG(Blue),
+			),
+			HBox(
+				Text("████").FG(RGB(255, 100, 50)),
+				Text("████").FG(RGB(50, 255, 100)),
+				Text("████").FG(RGB(50, 100, 255)),
+			),
+			Text("all mapped to green phosphor").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SEMonochrome(RGB(0, 255, 80))),
+	)
+	// :example
+
+	renderWithEffects("SEMonochrome", tree, 40, 5)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │● red  ● green  ● blue                │
+	// │████████████                          │
+	// │all mapped to green phosphor          │
+	// ╰──────────────────────────────────────╯
 }
 
 // Monochrome with a colour spotlight.
 func ExampleSEMonochrome_dodge() {
+	// example:
 	var panel NodeRef
-	ScreenEffect(SEMonochrome(RGB(0, 255, 80)).Dodge(&panel))
+	tree := VBox(
+		HBox(
+			Text("████").FG(Red),
+			Text("████").FG(Yellow),
+			Text(" monochrome "),
+		),
+		VBox.Border(BorderRounded).NodeRef(&panel)(
+			Text("full colour").FG(Green),
+			Text("████████").FG(Cyan),
+		),
+		HBox(
+			Text("████").FG(Magenta),
+			Text("████").FG(Blue),
+			Text(" monochrome "),
+		),
+		ScreenEffect(SEMonochrome(RGB(0, 255, 80)).Dodge(&panel)),
+	)
+	// :example
+
+	renderWithEffects("SEMonochrome_dodge", tree, 40, 6)
+	// Output:
+	// ████████ monochrome
+	// ╭──────────────────────────────────────╮
+	// │full colour                           │
+	// │████████                              │
+	// ╰──────────────────────────────────────╯
+	// ████████ monochrome
 }
 
 // Snap colours to 32-level steps.
 // Reduces escape output for animated effects with negligible visible banding.
 func ExampleSEQuantize() {
-	ScreenEffect(SEQuantize(32))
+	// example:
+	tree := VBox(
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("████").FG(RGB(255, 100, 50)),
+				Text("████").FG(RGB(50, 255, 100)),
+				Text("████").FG(RGB(50, 100, 255)),
+			),
+			Text("colours snapped to 32 steps").FG(RGB(200, 196, 184)),
+		),
+		ScreenEffect(SEQuantize(32)),
+	)
+	// :example
+
+	renderWithEffects("SEQuantize", tree, 40, 4)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │████████████                          │
+	// │colours snapped to 32 steps           │
+	// ╰──────────────────────────────────────╯
 }
 
 // First-match-wins conditional.
@@ -1852,13 +2391,24 @@ func ExampleFormField() {
 func ExampleScreenEffectNode() {
 	// example:
 	tree := VBox(
-		Text("content"),
+		VBox.Border(BorderRounded)(
+			HBox(
+				Text("● active").FG(Green),
+				Text("  "),
+				Text("████").FG(Cyan),
+			),
+			Text("dimmed via node literal").FG(RGB(200, 196, 184)),
+		),
 		ScreenEffectNode{Effects: []Effect{SEDimAll()}},
 	)
 	// :example
 
-	renderWithEffects("ScreenEffectNode", tree, 20, 1)
-	// Output: content
+	renderWithEffects("ScreenEffectNode", tree, 40, 4)
+	// Output:
+	// ╭──────────────────────────────────────╮
+	// │● active  ████                        │
+	// │dimmed via node literal               │
+	// ╰──────────────────────────────────────╯
 }
 
 // Animation tween.
