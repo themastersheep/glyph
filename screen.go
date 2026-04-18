@@ -57,6 +57,14 @@ func NewScreen(w io.Writer) *Screen {
 		w = os.Stdout
 	}
 
+	// diagnostic: tee all terminal writes to a file so we can inspect raw
+	// output for corruption (e.g. stray newlines, scroll-triggering sequences).
+	if path := os.Getenv("GLYPH_TEE"); path != "" {
+		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+			w = io.MultiWriter(w, f)
+		}
+	}
+
 	fd := int(os.Stdout.Fd())
 	width, height, err := getTerminalSize(fd)
 	if err != nil {
@@ -396,6 +404,15 @@ func (s *Screen) Flush() {
 			rw := 1
 			if backCell.Rune >= 0x1100 {
 				rw = runewidth.RuneWidth(backCell.Rune)
+				// non-ASCII width is advisory: emoji, CJK, and ambiguous-width
+				// runes can render at a different width than runewidth reports
+				// (terminal config, font, emoji DB version). invalidate our
+				// tracked cursor so the next cell write emits an absolute CUP,
+				// preventing drift that otherwise cascades into bottom-right
+				// wraps and 1-row terminal scrolls.
+				cursorX = -1
+				cursorY = -1
+				continue
 			}
 			if rw == 0 {
 				rw = 1 // zero-width chars still advance cursor by 1 in most terminals
