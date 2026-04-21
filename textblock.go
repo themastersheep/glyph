@@ -10,6 +10,7 @@ type TextBlockC struct {
 	styleDyn any
 	fgDyn    any
 	bgDyn    any
+	charWrap bool
 }
 
 // TextBlock creates a multi-line text display with word wrapping.
@@ -48,6 +49,7 @@ func (t TextBlockC) BG(c any) TextBlockC {
 	return t
 }
 
-func (t TextBlockC) Bold() TextBlockC  { t.style.Attr |= AttrBold; return t }
-func (t TextBlockC) Dim() TextBlockC   { t.style.Attr |= AttrDim; return t }
-func (t TextBlockC) Italic() TextBlockC { t.style.Attr |= AttrItalic; return t }
+func (t TextBlockC) Bold() TextBlockC     { t.style.Attr |= AttrBold; return t }
+func (t TextBlockC) Dim() TextBlockC      { t.style.Attr |= AttrDim; return t }
+func (t TextBlockC) Italic() TextBlockC   { t.style.Attr |= AttrItalic; return t }
+func (t TextBlockC) CharWrap() TextBlockC { t.charWrap = true; return t }

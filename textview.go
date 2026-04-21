@@ -132,49 +132,283 @@ func (t *Template) compileTextViewC(v *TextViewC, parent int16, depth int) int16
 	return t.compileLayerViewC(layerView, parent, depth)
 }
 
-// wrapText splits on newlines, expands tabs, then character-wraps lines exceeding width.
-func wrapText(s string, width int) []string {
+// wrapTextDraw wraps s to width and writes runes directly to buf at (x, y).
+// charWrap=true breaks mid-word, false breaks at word boundaries.
+// maxLines limits the output; 0 means unlimited.
+// returns the number of lines produced (before clipping by maxLines).
+// zero allocation: runes are written directly to the target buffer.
+func wrapTextDraw(s string, buf *Buffer, x, y int, width, maxLines int, style Style, charWrap bool) int {
 	if width <= 0 {
-		return nil
+		return 0
 	}
-	const tabWidth = 4
-	var out []string
-	line := make([]byte, 0, width)
+	if charWrap {
+		return wrapDrawChar(s, buf, x, y, width, maxLines, style)
+	}
+	return wrapDrawWord(s, buf, x, y, width, maxLines, style)
+}
+
+// wrapTextLines returns the line count that wrapTextDraw would produce.
+// used by layout to size the TextBlock before render.
+func wrapTextLines(s string, width int, charWrap bool) int {
+	if width <= 0 {
+		return 0
+	}
+	if charWrap {
+		return wrapDrawChar(s, nil, 0, 0, width, 0, Style{})
+	}
+	return wrapDrawWord(s, nil, 0, 0, width, 0, Style{})
+}
+
+// wrapDrawWord does the actual word-wrap draw. If buf is nil, only counts lines.
+func wrapDrawWord(s string, buf *Buffer, x, y, width, maxLines int, style Style) int {
+	row := 0
 	col := 0
+	var rw RowWriter
+	if buf != nil {
+		rw = buf.Row(y, style)
+	}
+
+	write := func(r rune) {
+		if buf == nil || (maxLines > 0 && row >= maxLines) {
+			return
+		}
+		rw.Put(x+col, r)
+	}
+	flush := func() {
+		row++
+		col = 0
+		if buf != nil {
+			rw = buf.Row(y+row, style)
+		}
+	}
+
+	i := 0
+	for i < len(s) {
+		if s[i] == '\n' {
+			flush()
+			i++
+			continue
+		}
+		if col == 0 && (s[i] == ' ' || s[i] == '\t') {
+			i++
+			continue
+		}
+		wordStart := i
+		wordRunes := 0
+		for i < len(s) && s[i] != ' ' && s[i] != '\t' && s[i] != '\n' {
+			_, size := utf8.DecodeRuneInString(s[i:])
+			i += size
+			wordRunes++
+		}
+		word := s[wordStart:i]
+
+		if col == 0 {
+			if wordRunes <= width {
+				for _, r := range word {
+					write(r)
+					col++
+				}
+			} else {
+				for _, r := range word {
+					if col >= width {
+						flush()
+					}
+					write(r)
+					col++
+				}
+			}
+		} else if col+1+wordRunes <= width {
+			write(' ')
+			col++
+			for _, r := range word {
+				write(r)
+				col++
+			}
+		} else {
+			flush()
+			if wordRunes <= width {
+				for _, r := range word {
+					write(r)
+					col++
+				}
+			} else {
+				for _, r := range word {
+					if col >= width {
+						flush()
+					}
+					write(r)
+					col++
+				}
+			}
+		}
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
+	}
+	return row + 1
+}
+
+// wrapDrawChar does the actual character-wrap draw. If buf is nil, only counts lines.
+func wrapDrawChar(s string, buf *Buffer, x, y, width, maxLines int, style Style) int {
+	const tabWidth = 4
+	row := 0
+	col := 0
+	var rw RowWriter
+	if buf != nil {
+		rw = buf.Row(y, style)
+	}
+
+	write := func(r rune) {
+		if buf == nil || (maxLines > 0 && row >= maxLines) {
+			return
+		}
+		rw.Put(x+col, r)
+	}
+	flush := func() {
+		row++
+		col = 0
+		if buf != nil {
+			rw = buf.Row(y+row, style)
+		}
+	}
 
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		i += size
 
 		if r == '\n' {
-			out = append(out, string(line))
-			line = line[:0]
-			col = 0
+			flush()
 			continue
 		}
-
 		if r == '\t' {
 			spaces := tabWidth - (col % tabWidth)
 			for j := 0; j < spaces; j++ {
 				if col >= width {
-					out = append(out, string(line))
-					line = line[:0]
-					col = 0
+					flush()
+				}
+				write(' ')
+				col++
+			}
+			continue
+		}
+		if col >= width {
+			flush()
+		}
+		write(r)
+		col++
+	}
+	return row + 1
+}
+
+// wrapText returns character-wrapped lines as strings (test compat).
+func wrapText(s string, width int) []string {
+	if width <= 0 {
+		return nil
+	}
+	var out []string
+	line := make([]byte, 0, width*4)
+	const tabWidth = 4
+	col := 0
+	flush := func() {
+		out = append(out, string(line))
+		line = line[:0]
+		col = 0
+	}
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+		if r == '\n' {
+			flush()
+			continue
+		}
+		if r == '\t' {
+			spaces := tabWidth - (col % tabWidth)
+			for j := 0; j < spaces; j++ {
+				if col >= width {
+					flush()
 				}
 				line = append(line, ' ')
 				col++
 			}
 			continue
 		}
-
 		if col >= width {
-			out = append(out, string(line))
-			line = line[:0]
-			col = 0
+			flush()
 		}
-
 		line = utf8.AppendRune(line, r)
 		col++
+	}
+	out = append(out, string(line))
+	return out
+}
+
+// wrapTextWord returns word-wrapped lines as strings (test compat).
+func wrapTextWord(s string, width int) []string {
+	if width <= 0 {
+		return nil
+	}
+	var out []string
+	line := make([]byte, 0, width*4)
+	col := 0
+	flush := func() {
+		out = append(out, string(line))
+		line = line[:0]
+		col = 0
+	}
+	i := 0
+	for i < len(s) {
+		if s[i] == '\n' {
+			flush()
+			i++
+			continue
+		}
+		if col == 0 && (s[i] == ' ' || s[i] == '\t') {
+			i++
+			continue
+		}
+		wordStart := i
+		wordRunes := 0
+		for i < len(s) && s[i] != ' ' && s[i] != '\t' && s[i] != '\n' {
+			_, size := utf8.DecodeRuneInString(s[i:])
+			i += size
+			wordRunes++
+		}
+		word := s[wordStart:i]
+		if col == 0 {
+			if wordRunes <= width {
+				line = append(line, word...)
+				col = wordRunes
+			} else {
+				for _, r := range word {
+					if col >= width {
+						flush()
+					}
+					line = utf8.AppendRune(line, r)
+					col++
+				}
+			}
+		} else if col+1+wordRunes <= width {
+			line = append(line, ' ')
+			line = append(line, word...)
+			col += 1 + wordRunes
+		} else {
+			flush()
+			if wordRunes <= width {
+				line = append(line, word...)
+				col = wordRunes
+			} else {
+				for _, r := range word {
+					if col >= width {
+						flush()
+					}
+					line = utf8.AppendRune(line, r)
+					col++
+				}
+			}
+		}
+		for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+			i++
+		}
 	}
 	out = append(out, string(line))
 	return out

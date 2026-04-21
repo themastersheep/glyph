@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode"
-	"unicode/utf8"
 	"unsafe"
 )
 
@@ -1470,6 +1469,7 @@ type opText struct {
 	style      Style
 	stylePtr   *Style         // dynamic style override (nil = use static)
 	styleCond  conditionNode  // conditional style for ForEach (nil = not conditional)
+	charWrap   bool           // true = character-wrap, false = word-wrap (TextBlock only)
 }
 
 func (tx *opText) resolve(elemBase unsafe.Pointer) string {
@@ -1490,18 +1490,21 @@ func (tx *opText) resolve(elemBase unsafe.Pointer) string {
 }
 
 func (tx *opText) textWidth(elemBase unsafe.Pointer) int16 {
+	// use display-cell width so wide runes (emoji, CJK) reserve the right
+	// amount of space in layout. rune count was the historical behaviour but
+	// underestimates by 1 for each wide rune, which cascades into row overflow.
 	switch tx.mode {
 	case textPtr:
-		return int16(utf8.RuneCountInString(*tx.ptr))
+		return int16(StringWidth(*tx.ptr))
 	case textOff:
 		if elemBase != nil {
-			return int16(utf8.RuneCountInString(*(*string)(unsafe.Pointer(uintptr(elemBase) + tx.off))))
+			return int16(StringWidth(*(*string)(unsafe.Pointer(uintptr(elemBase) + tx.off))))
 		}
 		return 10
 	case textFn:
 		if tx.fn != nil {
 			tx.fnCached = tx.fn()
-			return int16(utf8.RuneCountInString(tx.fnCached))
+			return int16(StringWidth(tx.fnCached))
 		}
 		return 0
 	case textIntPtr:
@@ -1509,7 +1512,7 @@ func (tx *opText) textWidth(elemBase unsafe.Pointer) int16 {
 	case textFloat64Ptr:
 		return int16(len(strconv.FormatFloat(*tx.float64Ptr, 'f', -1, 64)))
 	default:
-		return int16(utf8.RuneCountInString(tx.static))
+		return int16(StringWidth(tx.static))
 	}
 }
 
@@ -2156,7 +2159,7 @@ func (t *Template) compileSelectionList(v *SelectionList, parent int16, depth in
 	if marker == "" {
 		marker = "> "
 	}
-	markerWidth := int16(utf8.RuneCountInString(marker))
+	markerWidth := int16(StringWidth(marker))
 
 	// Create iteration template if Render function provided
 	var iterTmpl *Template
@@ -2923,7 +2926,7 @@ func (t *Template) compileTextC(v TextC, parent int16, depth int, elemBase unsaf
 }
 
 func (t *Template) compileTextBlockC(v TextBlockC, parent int16, depth int, elemBase unsafe.Pointer, elemSize uintptr) int16 {
-	ext := &opText{style: v.style}
+	ext := &opText{style: v.style, charWrap: v.charWrap}
 
 	switch val := v.content.(type) {
 	case string:
@@ -3467,7 +3470,7 @@ func (t *Template) compileAutoTableReactive(v AutoTableC, rv reflect.Value, pare
 
 // alignOffset returns the x offset needed to align text within the given width.
 func alignOffset(text string, width int, align Align) int {
-	textLen := utf8.RuneCountInString(text)
+	textLen := StringWidth(text)
 	if textLen >= width {
 		return 0
 	}
@@ -3956,7 +3959,7 @@ func (t *Template) setOpWidth(op *Op, geom *Geom, availW int16, elemBase unsafe.
 		ext := op.Ext.(*opTabs)
 		totalW := 0
 		for i, label := range ext.labels {
-			labelW := utf8.RuneCountInString(label)
+			labelW := StringWidth(label)
 			switch ext.styleType {
 			case TabsStyleBox:
 				labelW += 4
@@ -4511,11 +4514,11 @@ func (t *Template) layout(_ int16) {
 				if w <= 0 {
 					w = 72
 				}
-				lines := wrapText(text, w)
-				if len(lines) == 0 {
+				n := wrapTextLines(text, w, ext.charWrap)
+				if n == 0 {
 					geom.H = 1
 				} else {
-					geom.H = int16(len(lines))
+					geom.H = int16(n)
 				}
 
 			case OpAutoTable:
@@ -5628,13 +5631,9 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 		}
 		style := t.effectiveStyle(baseStyle)
 		raw := ext.resolve(t.elemBase)
-		lines := wrapText(raw, int(contentW))
-		for i, line := range lines {
-			y := int(absY) + i
-			if y >= buf.Height() {
-				break
-			}
-			buf.WriteStringFast(int(absX), y, line, style, int(maxW))
+		maxLines := buf.Height() - int(absY)
+		if maxLines > 0 {
+			wrapTextDraw(raw, buf, int(absX), int(absY), int(contentW), maxLines, style, ext.charWrap)
 		}
 
 	case OpProgress:
@@ -5971,7 +5970,7 @@ func (t *Template) renderOp(buf *Buffer, idx int16, globalX, globalY, maxW int16
 					buf.SetFast(titleX, int(boxY), Cell{Rune: ' ', Style: style})
 					titleX++
 					title := applyTransform(op.Title, titleTransform)
-					titleW := utf8.RuneCountInString(title)
+					titleW := StringWidth(title)
 					availTitleW := titleMaxW - 3 // border char + space before + space after
 					if availTitleW > 0 {
 						if titleW > availTitleW {
@@ -6223,13 +6222,9 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 		}
 		style := mergeStyle(baseStyle)
 		raw := ext.resolve(elemBase)
-		lines := wrapText(raw, int(contentW))
-		for i, line := range lines {
-			y := int(absY) + i
-			if y >= buf.Height() {
-				break
-			}
-			buf.WriteStringFast(int(absX), y, line, style, int(maxW))
+		maxLines := buf.Height() - int(absY)
+		if maxLines > 0 {
+			wrapTextDraw(raw, buf, int(absX), int(absY), int(contentW), maxLines, style, ext.charWrap)
 		}
 
 	case OpProgress:
@@ -6488,7 +6483,7 @@ func (sub *Template) renderSubOp(buf *Buffer, idx int16, globalX, globalY, maxW 
 					buf.SetFast(titleX, int(boxY), Cell{Rune: ' ', Style: style})
 					titleX++
 					title := applyTransform(op.Title, titleTransform)
-					titleW := utf8.RuneCountInString(title)
+					titleW := StringWidth(title)
 					availTitleW := titleMaxW - 3 // border char + space before + space after
 					if availTitleW > 0 {
 						if titleW > availTitleW {
@@ -6846,7 +6841,7 @@ func (t *Template) treeMaxWidth(node *TreeNode, level, indent int, includeRoot b
 	maxW := 0
 	if includeRoot && level >= 0 {
 		// 2 for indicator + space, then indent + label
-		lineW := 2 + level*indent + utf8.RuneCountInString(node.Label)
+		lineW := 2 + level*indent + StringWidth(node.Label)
 		if lineW > maxW {
 			maxW = lineW
 		}
@@ -6906,7 +6901,7 @@ func (t *Template) renderTreeNode(buf *Buffer, ext *opTreeView, node *TreeNode, 
 
 		effStyle := t.effectiveStyle(ext.style)
 		labelText := applyTransform(node.Label, effStyle.Transform)
-		buf.WriteStringFast(posX, *y, labelText, ext.style, utf8.RuneCountInString(labelText))
+		buf.WriteStringFast(posX, *y, labelText, ext.style, StringWidth(labelText))
 		(*y)++
 	}
 
@@ -7226,7 +7221,7 @@ func (t *Template) renderTabs(buf *Buffer, op *Op, geom *Geom, absX, absY int16)
 
 		// apply transform to label text
 		label = applyTransform(label, style.Transform)
-		labelLen := utf8.RuneCountInString(label)
+		labelLen := StringWidth(label)
 
 		switch ext.styleType {
 		case TabsStyleBox:
@@ -7405,12 +7400,14 @@ func (t *Template) renderTable(buf *Buffer, op *Op, absX, absY, maxW int16) {
 }
 
 func (t *Template) writeTableCell(buf *Buffer, x, y int, text string, width int, align Align, style Style) {
-	textLen := utf8.RuneCountInString(text)
+	textLen := StringWidth(text)
 	if textLen > width {
-		// Truncate
+		// Truncate (rune-wise; width-correct truncation for wide chars is a
+		// follow-up — this may still over-trim by 1 cell for emoji-heavy
+		// cells but won't cause row overflow).
 		runes := []rune(text)
 		text = string(runes[:width])
-		textLen = width
+		textLen = StringWidth(text)
 	}
 
 	padding := width - textLen

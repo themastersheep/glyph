@@ -9,7 +9,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/mattn/go-runewidth"
 	"golang.org/x/sys/unix"
 )
 
@@ -167,6 +166,52 @@ func (s *Screen) EnterRawMode() error {
 	return nil
 }
 
+// SetTerminalBG changes the terminal's default background colour via OSC 11.
+// Takes effect for both the main and alternate screen buffers. Use this to
+// make unfilled terminal rows (e.g. partial bottom row below our rendered
+// content) match the app's background instead of showing the shell's BG.
+// Under tmux, the sequence is wrapped in DCS passthrough so it reaches the
+// outer terminal. Call ResetTerminalBG on exit to restore the user's
+// original background.
+func (s *Screen) SetTerminalBG(c Color) {
+	if c.Mode != ColorRGB {
+		return
+	}
+	osc := make([]byte, 0, 16)
+	osc = append(osc, "\x1b]11;#"...)
+	osc = append(osc, hexDigit(c.R>>4), hexDigit(c.R&0xF))
+	osc = append(osc, hexDigit(c.G>>4), hexDigit(c.G&0xF))
+	osc = append(osc, hexDigit(c.B>>4), hexDigit(c.B&0xF))
+	osc = append(osc, 0x07) // BEL terminator
+	s.writer.Write(wrapTmuxPassthrough(osc))
+}
+
+// ResetTerminalBG restores the terminal's default background (OSC 111).
+func (s *Screen) ResetTerminalBG() {
+	s.writer.Write(wrapTmuxPassthrough([]byte("\x1b]111\x07")))
+}
+
+// wrapTmuxPassthrough wraps an escape sequence so tmux forwards it to the
+// outer terminal. No-op outside tmux. Format: ESC P tmux; <seq with ESCs
+// doubled> ESC \. tmux must have allow-passthrough on (on by default in
+// recent tmux builds).
+func wrapTmuxPassthrough(seq []byte) []byte {
+	if os.Getenv("TMUX") == "" {
+		return seq
+	}
+	out := make([]byte, 0, len(seq)*2+8)
+	out = append(out, "\x1bPtmux;"...)
+	for _, b := range seq {
+		if b == 0x1b {
+			out = append(out, 0x1b, 0x1b) // double ESC inside DCS
+		} else {
+			out = append(out, b)
+		}
+	}
+	out = append(out, 0x1b, '\\') // ST
+	return out
+}
+
 // ExitRawMode restores the terminal to its original state.
 func (s *Screen) ExitRawMode() error {
 	if !s.inRawMode {
@@ -174,6 +219,7 @@ func (s *Screen) ExitRawMode() error {
 	}
 
 	// Disable bracketed paste, show cursor, exit alternate screen
+	s.ResetTerminalBG()           // restore terminal's original background
 	s.writeString("\x1b[?2004l") // Disable bracketed paste mode
 	s.writeString("\x1b[?25h")   // Show cursor
 	s.writeString("\x1b[?1049l") // Exit alternate screen
@@ -385,7 +431,7 @@ func (s *Screen) Flush() {
 			// Position cursor if not already there
 			if cursorX != x || cursorY != y {
 				if debugFlush && positionCount < 50 {
-					rw := runewidth.RuneWidth(backCell.Rune)
+					rw := RuneWidth(backCell.Rune)
 					fmt.Fprintf(os.Stderr, "Flush: pos(%d,%d) cursor was (%d,%d) writing '%c' (U+%04X) width=%d\n",
 						x, y, cursorX, cursorY, backCell.Rune, backCell.Rune, rw)
 				}
@@ -400,24 +446,18 @@ func (s *Screen) Flush() {
 			s.writeCell(&s.buf, backCell)
 			s.front.cells[frontBase+x] = backCell
 			// cursor advances by the display width of the character
-			// fast path: ASCII runes are always width 1
-			rw := 1
 			if backCell.Rune >= 0x1100 {
-				rw = runewidth.RuneWidth(backCell.Rune)
 				// non-ASCII width is advisory: emoji, CJK, and ambiguous-width
-				// runes can render at a different width than runewidth reports
-				// (terminal config, font, emoji DB version). invalidate our
-				// tracked cursor so the next cell write emits an absolute CUP,
-				// preventing drift that otherwise cascades into bottom-right
-				// wraps and 1-row terminal scrolls.
+				// runes can render at a different width than the width table
+				// reports (terminal config, font, emoji DB version). invalidate
+				// our tracked cursor so the next cell write emits an absolute
+				// CUP, preventing drift that otherwise cascades into bottom-
+				// right wraps and 1-row terminal scrolls.
 				cursorX = -1
 				cursorY = -1
 				continue
 			}
-			if rw == 0 {
-				rw = 1 // zero-width chars still advance cursor by 1 in most terminals
-			}
-			cursorX = x + rw
+			cursorX = x + 1
 			cursorY = y
 		}
 	}
@@ -463,6 +503,14 @@ func (s *Screen) FlushFull() {
 	for y := 0; y < s.height; y++ {
 		for x := 0; x < s.width; x++ {
 			cell := s.back.Get(x, y)
+			// skip placeholder cells (second half of double-width runes):
+			// the wide rune already advanced the terminal cursor by 2, so
+			// emitting anything here (including a NUL for Rune==0) would
+			// misalign the row and cascade into bottom-right wraps.
+			if cell.Rune == 0 {
+				s.front.Set(x, y, cell)
+				continue
+			}
 			s.writeCell(&s.buf, cell)
 			s.front.Set(x, y, cell)
 		}
@@ -474,11 +522,11 @@ func (s *Screen) FlushFull() {
 	// Reset style at end
 	s.buf.WriteString("\x1b[0m")
 	s.lastStyle = DefaultStyle()
-
-	if s.syncOutput {
-		s.buf.WriteString("\x1b[?2026l")
-	}
-	s.writer.Write(s.buf.Bytes())
+	// note: leave s.buf populated and don't close sync here — FlushBuffer
+	// appends cursor ops and writes everything in a single syscall, keeping
+	// the full frame + cursor ops inside one sync block. Previously we wrote
+	// here and left s.buf dirty, so FlushBuffer replayed the frame bytes
+	// un-synchronized (starting with \x1b[2J), causing a brief blank flash.
 }
 
 // FlushInline renders the buffer for inline mode (no alternate screen).

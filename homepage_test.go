@@ -4,6 +4,7 @@ package glyph_test
 // if these break, the homepage is lying.
 
 import (
+	"io"
 	"os/exec"
 	"strings"
 	"testing"
@@ -63,11 +64,16 @@ func TestHomepage_composeLayouts(t *testing.T) {
 
 // homepage: section 02, stream anything
 func TestHomepage_streamAnything(t *testing.T) {
+	// streaming plumbing exercised against a real io.Reader — no subprocess.
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	_ = Log(pr).Grow(1).MaxLines(1000)
+
+	// example:
 	app := NewApp()
 
 	cmd := exec.Command("go", "test", "./...")
 	stdout, _ := cmd.StdoutPipe()
-	_ = cmd.Start()
 
 	app.SetView(
 		VBox(
@@ -76,6 +82,7 @@ func TestHomepage_streamAnything(t *testing.T) {
 		),
 	)
 	_ = app
+	// :example
 }
 
 // homepage: section 02, conditional rendering

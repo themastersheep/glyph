@@ -2273,8 +2273,8 @@ func ExampleTextBlockC() {
 	renderAndPrint("TextBlockC", tree, 20, 4)
 	// Output:
 	// hello world this is
-	// a long line that wra
-	// ps
+	// a long line that
+	// wraps
 	// ---
 }
 
@@ -2429,5 +2429,83 @@ func ExampleAnimateFn() {
 	// │animated          │
 	// │                  │
 	// │                  │
+	// ╰──────────────────╯
+}
+
+// Colour tween.
+// Animate works on Color pointers. The colour lerps through RGB space toward the target.
+func ExampleAnimateFn_color() {
+	// example:
+	fg := Red
+	tree := VBox.Border(BorderRounded)(
+		Text("status").FG(Animate.Duration(500 * time.Millisecond)(&fg)),
+	)
+	// :example
+
+	renderAndPrint("AnimateFn_color", tree, 20, 3)
+	// Output:
+	// ╭──────────────────╮
+	// │status            │
+	// ╰──────────────────╯
+}
+
+// Conditional target.
+// Wrap a conditional in Animate — the tween triggers whenever the condition changes.
+func ExampleAnimateFn_conditional() {
+	// example:
+	expanded := true
+	smooth := Animate.Duration(300 * time.Millisecond).Ease(EaseOutCubic)
+
+	tree := VBox.Height(smooth(If(&expanded).Then(int16(5)).Else(int16(1)))).Border(BorderRounded)(
+		Text("content"),
+	)
+	// :example
+
+	renderAndPrint("AnimateFn_conditional", tree, 20, 7)
+	// Output:
+	// ╭──────────────────╮
+	// │content           │
+	// │                  │
+	// │                  │
+	// ╰──────────────────╯
+}
+
+// Appear animation.
+// From sets the starting value. The element animates from that value to the target on first render.
+func ExampleAnimateFn_from() {
+	// example:
+	tree := VBox.Height(
+		Animate.From(int16(0)).Duration(500 * time.Millisecond)(int16(3)),
+	).Border(BorderRounded)(
+		Text("appears"),
+	)
+	// :example
+
+	renderAndPrint("AnimateFn_from", tree, 20, 5)
+	// Output:
+	// ╭──────────────────╮
+	// │appears           │
+	// │                  │
+	// │                  │
+	// ╰──────────────────╯
+}
+
+// Completion callback.
+// OnComplete fires once when the animation reaches its target value.
+func ExampleAnimateFn_onComplete() {
+	// example:
+	done := false
+	tree := VBox.Height(
+		Animate.Duration(200 * time.Millisecond).OnComplete(func() { done = true })(int16(3)),
+	).Border(BorderRounded)(
+		Text("animating"),
+	)
+	// :example
+	_ = done
+
+	renderAndPrint("AnimateFn_onComplete", tree, 20, 5)
+	// Output:
+	// ╭──────────────────╮
+	// │animating         │
 	// ╰──────────────────╯
 }

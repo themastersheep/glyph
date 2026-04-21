@@ -455,7 +455,10 @@ func (a *App) Go(name string) {
 	}
 	a.currentView = name
 	a.input.SetRouter(a.viewRouters[name])
-	a.forceFullFlush = true
+	// diff flush handles view switches correctly — every changed cell gets
+	// emitted. FlushFull issues \x1b[2J (clear) which can produce a visible
+	// microflash on some terminals (Ghostty) during a sync-wrapped update.
+	// a.forceFullFlush = true
 	a.RequestRender()
 }
 
@@ -924,8 +927,11 @@ func (a *App) run(startView string) error {
 		}
 		defer a.screen.ExitRawMode()
 		// if a default style is set, paint the terminal background immediately
-		// before the first frame renders (avoids flash of terminal default colours)
-		if a.defaultStyle.BG.Mode != ColorDefault {
+		// before the first frame renders (avoids flash of terminal default colours).
+		// OSC 11 also tells the terminal to use this as its default bg, which
+		// covers unfilled areas (e.g. partial bottom row below our content).
+		if a.defaultStyle.BG.Mode == ColorRGB {
+			a.screen.SetTerminalBG(a.defaultStyle.BG)
 			bg := a.defaultStyle.BG
 			fmt.Fprintf(a.screen.writer, "\x1b[48;2;%d;%d;%dm\x1b[2J\x1b[H", bg.R, bg.G, bg.B)
 		}
@@ -1032,14 +1038,13 @@ func reopenStdin() {
 // handleResize watches for terminal resize events.
 func (a *App) handleResize() {
 	for size := range a.screen.ResizeChan() {
-		// Resize the buffer pool to match new terminal dimensions
 		if a.pool != nil {
 			a.pool.Resize(size.Width, size.Height)
 		}
-		// Notify application of resize
 		if a.onResize != nil {
 			a.onResize(size.Width, size.Height)
 		}
+		a.forceFullFlush = true
 		a.RequestRender()
 	}
 }

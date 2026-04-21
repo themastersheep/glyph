@@ -9,13 +9,13 @@ func TestTextBlock_WrapsText(t *testing.T) {
 	))
 	tmpl.Execute(buf, 20, 10)
 
-	// "hello world this is" fits in 20 cols
+	// word-wrap: "hello world this is" fits in 20, "a" would make 21
 	if got := buf.GetLine(0); got != "hello world this is" {
 		t.Errorf("line 0: got %q, want %q", got, "hello world this is")
 	}
-	// "a long line that" wraps to line 1
-	if got := buf.GetLine(1); got != "a long line that wra" {
-		t.Errorf("line 1: got %q, want %q", got, "a long line that wra")
+	// "a long line that" on line 1
+	if got := buf.GetLine(1); got != "a long line that" {
+		t.Errorf("line 1: got %q, want %q", got, "a long line that")
 	}
 }
 

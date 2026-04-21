@@ -144,9 +144,9 @@ func main() {
 		}
 	}()
 
-	// process refresh + filter sync, every 2s
+	// process refresh + filter sync, every 1s
 	go func() {
-		for range time.NewTicker(2 * time.Second).C {
+		for range time.NewTicker(1 * time.Second).C {
 			filter.Update(input.Value())
 			refreshProcs()
 			app.RequestRender()

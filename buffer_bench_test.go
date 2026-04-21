@@ -1,6 +1,9 @@
 package glyph
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // terminal sizes used across benchmarks
 const (
@@ -421,6 +424,73 @@ func BenchmarkTypicalFrame(b *testing.B) {
 		buf.HLine(1, 10, benchSmallW-2, '─', DefaultStyle())
 		for y := 11; y < benchSmallH-1; y++ {
 			buf.WriteStringFast(2, y, "log line content here", DefaultStyle(), benchSmallW-4)
+		}
+	}
+}
+
+// --- Text wrapping ---
+
+var benchWrapText = strings.Repeat("The quick brown fox jumps over the lazy dog. ", 20)
+
+func BenchmarkWrapTextChar(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = wrapText(benchWrapText, 80)
+	}
+}
+
+func BenchmarkWrapTextWord(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = wrapTextWord(benchWrapText, 80)
+	}
+}
+
+func BenchmarkWrapTextDrawChar(b *testing.B) {
+	buf := NewBuffer(80, 20)
+	style := DefaultStyle()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		wrapTextDraw(benchWrapText, buf, 0, 0, 80, 20, style, true)
+	}
+}
+
+func BenchmarkWrapTextDrawWord(b *testing.B) {
+	buf := NewBuffer(80, 20)
+	style := DefaultStyle()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		wrapTextDraw(benchWrapText, buf, 0, 0, 80, 20, style, false)
+	}
+}
+
+// end-to-end: wrap + write to buffer (fair comparison with DrawWord/DrawChar)
+func BenchmarkWrapWriteWord(b *testing.B) {
+	buf := NewBuffer(80, 20)
+	style := DefaultStyle()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		lines := wrapTextWord(benchWrapText, 80)
+		for j, line := range lines {
+			if j >= 20 {
+				break
+			}
+			buf.WriteStringFast(0, j, line, style, 80)
+		}
+	}
+}
+
+func BenchmarkWrapWriteChar(b *testing.B) {
+	buf := NewBuffer(80, 20)
+	style := DefaultStyle()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		lines := wrapText(benchWrapText, 80)
+		for j, line := range lines {
+			if j >= 20 {
+				break
+			}
+			buf.WriteStringFast(0, j, line, style, 80)
 		}
 	}
 }

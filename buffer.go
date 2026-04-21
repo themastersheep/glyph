@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
-	"unicode/utf8"
-
-	"github.com/mattn/go-runewidth"
 )
 
 // Buffer is a 2D grid of cells representing a drawable surface.
@@ -121,6 +118,41 @@ func (b *Buffer) SetFast(x, y int, c Cell) {
 	b.dirtyRows[y] = true
 }
 
+// RowWriter writes cells to a single row with per-row work hoisted once:
+// the default style merge, dirty tracking, and base index computation.
+// Use when writing many runes to the same row — avoids per-cell overhead.
+type RowWriter struct {
+	cells []Cell // slice into the row (len == buffer width)
+	width int
+	style Style // already merged with buffer's default style
+}
+
+// Row returns a writer for row y with the style precomputed and the row marked dirty.
+// If y is out of bounds, Put calls on the returned writer are no-ops.
+func (b *Buffer) Row(y int, style Style) RowWriter {
+	if y < 0 || y >= b.height {
+		return RowWriter{}
+	}
+	if y > b.dirtyMaxY {
+		b.dirtyMaxY = y
+	}
+	b.dirtyRows[y] = true
+	base := y * b.width
+	return RowWriter{
+		cells: b.cells[base : base+b.width],
+		width: b.width,
+		style: b.applyDefault(style),
+	}
+}
+
+// Put writes a rune at column x. Out-of-bounds columns are silently dropped.
+func (rw *RowWriter) Put(x int, r rune) {
+	if x < 0 || x >= rw.width {
+		return
+	}
+	rw.cells[x] = Cell{Rune: r, Style: rw.style}
+}
+
 // Partial block characters for sub-character progress bar precision (1/8 to 8/8)
 var partialBlocks = [9]rune{' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'}
 
@@ -195,6 +227,8 @@ func (b *Buffer) WriteProgressBar(x, y, width int, ratio float32, style Style) {
 
 // WriteStringFast writes a string without border merging.
 // Writes directly to the cell slice without border merging.
+// Handles double-width runes (emoji, CJK) by placing a Rune=0 placeholder
+// in the trailing cell so the screen layer skips it when diffing.
 func (b *Buffer) WriteStringFast(x, y int, s string, style Style, maxWidth int) {
 	if y < 0 || y >= b.height {
 		return
@@ -209,14 +243,18 @@ func (b *Buffer) WriteStringFast(x, y int, s string, style Style, maxWidth int) 
 	base := y * b.width
 	written := 0
 	for _, r := range s {
-		if written >= maxWidth || x >= b.width {
+		rw := RuneWidth(r)
+		if written+rw > maxWidth || x+rw > b.width {
 			break
 		}
 		if x >= 0 {
 			b.cells[base+x] = Cell{Rune: r, Style: style}
+			if rw == 2 && x+1 < b.width {
+				b.cells[base+x+1] = Cell{Rune: 0, Style: style}
+			}
 		}
-		x++
-		written++
+		x += rw
+		written += rw
 	}
 }
 
@@ -247,10 +285,7 @@ func (b *Buffer) WriteSpans(x, y int, spans []Span, maxWidth int) {
 	for _, span := range spans {
 		ss := b.applyDefault(span.Style)
 		for _, r := range span.Text {
-			rw := runewidth.RuneWidth(r)
-			if rw == 0 {
-				rw = 1 // treat zero-width as 1 for positioning
-			}
+			rw := RuneWidth(r)
 			if written+rw > maxWidth || x+rw > b.width {
 				return
 			}
@@ -283,8 +318,11 @@ func (b *Buffer) WriteLeader(x, y int, label, value string, width int, fill rune
 	}
 
 	base := y * b.width
-	labelLen := utf8.RuneCountInString(label)
-	valueLen := utf8.RuneCountInString(value)
+	// display width so wide runes (emoji, CJK) reserve 2 cells in the leader
+	// calculation. The per-rune write loops below still advance pos by 1; if
+	// a caller passes wide runes, see WriteSpans for the correct pattern.
+	labelLen := StringWidth(label)
+	valueLen := StringWidth(value)
 
 	// Calculate fill length
 	fillLen := width - labelLen - valueLen
@@ -953,15 +991,21 @@ var (
 		BottomLeft:  BoxDoubleBottomLeft,
 		BottomRight: BoxDoubleBottomRight,
 	}
+	// BorderSoft uses half-block characters. Top/Bottom are half-cell tall
+	// (▀ / ▄); Left/Right are full-cell wide (█) so their visual thickness
+	// matches top/bottom — terminal cells are ~2:1 tall:wide, so a full-width
+	// column equals a half-height row in rendered pixels. Corners are full
+	// blocks to keep the vertical columns visually continuous through the
+	// corner cell.
 	BorderSoft = BorderStyle{
 		Top:         '▀',
 		Bottom:      '▄',
-		Left:        '▌',
-		Right:       '▐',
-		TopLeft:     '▛',
-		TopRight:    '▜',
-		BottomLeft:  '▙',
-		BottomRight: '▟',
+		Left:        '█',
+		Right:       '█',
+		TopLeft:     '█',
+		TopRight:    '█',
+		BottomLeft:  '█',
+		BottomRight: '█',
 	}
 )
 
@@ -1394,9 +1438,25 @@ func (b *Buffer) CopyFrom(src *Buffer) {
 	if b.width == src.width && b.height == src.height {
 		copy(b.cells, src.cells)
 		b.dirtyMaxY = src.dirtyMaxY
-		// Mark all rows dirty since we did a full copy
 		b.allDirty = true
+		return
 	}
+	// mismatched sizes (resize in progress): clear and copy what fits
+	b.Clear()
+	minW := b.width
+	if src.width < minW {
+		minW = src.width
+	}
+	minH := b.height
+	if src.height < minH {
+		minH = src.height
+	}
+	for y := 0; y < minH; y++ {
+		for x := 0; x < minW; x++ {
+			b.cells[y*b.width+x] = src.cells[y*src.width+x]
+		}
+	}
+	b.allDirty = true
 }
 
 // Resize resizes the buffer to new dimensions.
@@ -1502,7 +1562,8 @@ func (p *BufferPool) Height() int {
 func (p *BufferPool) Resize(width, height int) {
 	for i := 0; i < 2; i++ {
 		p.buffers[i].Resize(width, height)
-		p.dirty[i].Store(false) // Mark as clean after resize (Resize clears)
+		p.buffers[i].Clear()
+		p.dirty[i].Store(false)
 	}
 }
 
